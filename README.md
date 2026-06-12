@@ -61,6 +61,24 @@ Then enable **Launch at Login** from the menubar menu.
 - **Launch at Login** toggle
 - **Quit**
 
+## Development
+
+Built with SwiftPM; `scripts/build-app.sh` produces the signed `.app`.
+
+- **Debug logging** — run with `SOUND_KEKO_DEBUG=1` to log IPC, remote commands,
+  and now-playing updates (via NSLog / stderr).
+- **Artwork styles** live in `Sources/sound-keko/ArtworkTransform.swift`. The
+  `Cartoon` style is a small Core Image pipeline; its main knobs are the posterize
+  `levels` (4), edge `threshold` (0.22) and `intensity` (4).
+- **Preview a style** through the *real* pipeline without touching Control Center
+  — renders a side-by-side `[original | styled]` PNG:
+  ```sh
+  ./sound-keko.app/Contents/MacOS/sound-keko --render <style> <coverURL> [out.png]
+  # e.g. --render cartoon https://i.scdn.co/image/<id> /tmp/out.png
+  ```
+- **Watch ncspot live** — `scripts/watch-ncspot.py` prints playback/track changes
+  from the IPC socket (read-only).
+
 ## Notes
 
 - The app is ad-hoc signed for personal use. macOS Gatekeeper may ask you to

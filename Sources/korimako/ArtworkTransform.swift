@@ -30,7 +30,7 @@ enum ArtworkTransform {
 
     /// Currently selected style, persisted across launches.
     static var current: ArtworkStyle {
-        get { ArtworkStyle(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .cartoon }
+        get { ArtworkStyle(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .original }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) }
     }
 

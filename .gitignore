@@ -1,0 +1,4 @@
+.build/
+sound-keko.app/
+*.swiftpm
+.DS_Store

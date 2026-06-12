@@ -62,13 +62,19 @@ If the "Launch at Login" option doesn't work properly, ensure you placed korimak
 
 ## Install
 
-**Option A — download** (no build tools needed):
+**Option A — Homebrew** (recommended):
+
+```sh
+brew install --cask gouegd/korimako/korimako
+```
+
+**Option B — download** (no build tools needed):
 
 1. Download `korimako.zip` from the [latest release](https://github.com/gouegd/korimako/releases/latest)
 2. Unzip and drag `korimako.app` to `/Applications`
 3. Open it — macOS will block it on first launch because it isn't notarised; go to **System Settings → Privacy & Security → Open Anyway**
 
-**Option B — build from source**:
+**Option C — build from source**:
 
 ```sh
 git clone https://github.com/gouegd/korimako

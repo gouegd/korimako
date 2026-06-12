@@ -1,11 +1,10 @@
 <div align="center">
   <img src="Resources/AppIcon-source.png" width="128" alt="korimako icon"><br><br>
   <h1>korimako</h1>
-  <p>Hardware media keys → <a href="https://github.com/hrkfdn/ncspot">ncspot</a>, via macOS Now Playing</p>
+  <p>Hardware media keys support for <a href="https://github.com/hrkfdn/ncspot">ncspot</a>, and some pretty feathers</p>
   <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-C95228?style=flat-square&logo=apple&logoColor=EDE8DC">
   <img alt="Swift 5" src="https://img.shields.io/badge/Swift-5-C95228?style=flat-square&labelColor=1B3A2A&logo=swift&logoColor=E8A82E">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-E8A82E?style=flat-square&labelColor=1B3A2A">
-  <img alt="no Xcode" src="https://img.shields.io/badge/no%20Xcode-required-C95228?style=flat-square&labelColor=1B3A2A">
 </div>
 
 <br>
@@ -19,16 +18,16 @@ as a Now Playing source, so the keys follow whatever is currently playing: ncspo
 when it's active, your browser when a video is playing there, just like Spotify or
 Music would behave.
 
-The track ncspot is currently playing is now visible in the menubar.
+**The track ncspot is currently playing is now visible in the menubar.**
 
 <img src="docs/screenshot-menubar.png" width="750" alt="Menubar showing the current track">
 
-The full menu shows the current track with album art, your two most recent tracks played via ncspot
+**The full menu shows the current track with album art**, your two most recent tracks played via ncspot
 as long as korimako was running, and for funsies, a style picker that applies Core Image effects to album art live.
 
 <img src="docs/screenshot-menu-open.png" width="750" alt="Menu open: current track with art, recently played, style picker">
 
-korimako also hooks into the macOS Control Center media widget, so the album art will appear there too,
+**korimako also hooks into the macOS Control Center media widget**, so the album art will appear there too,
 and you can control playback there too, including with the position scrubber.
 
 <img src="docs/screenshot-control-center.png" width="750" alt="Control Center integration with position scrubber">

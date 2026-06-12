@@ -9,11 +9,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var connected = false
     private var menuIsOpen = false
 
-    /// When the user clicks a recent track we step back to it by repeatedly
-    /// sending `previous` until ncspot's current track matches this id (the
-    /// first `previous` may just restart the current track, so we can't count).
-    private var navTarget: (id: String, attemptsLeft: Int)?
-
     /// Recently played, most-recent-first; index 0 is the current track.
     /// Capped at `historyLimit` (current + the latest two).
     private struct TrackEntry {
@@ -59,7 +54,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         nowPlaying.update(status: status)         // fetches/caches current cover first
         let trackChanged = updateHistory(status)
         render(status)
-        advanceNavigation(currentId: status.playable?.id)
         if trackChanged { refreshMenuIfOpen() }   // keep an open menu live
     }
 
@@ -80,19 +74,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         Log.debug("history: \(history.map(\.title))")
         return true
-    }
-
-    /// Drive the "click a recent track → step back to it" navigation.
-    private func advanceNavigation(currentId: String?) {
-        guard let nav = navTarget else { return }
-        if currentId == nav.id {
-            navTarget = nil                                   // arrived
-        } else if nav.attemptsLeft > 0 {
-            navTarget = (nav.id, nav.attemptsLeft - 1)
-            ipc.send("previous")
-        } else {
-            navTarget = nil                                   // give up, don't loop forever
-        }
     }
 
     // MARK: - Menubar icon + title (updates live)
@@ -194,22 +175,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func trackItem(_ entry: TrackEntry, index: Int) -> NSMenuItem {
         let isCurrent = index == 0
+        // Current track toggles play/pause; recents are informational
+        // (ncspot can't reliably jump to an arbitrary past track under shuffle).
         let item = NSMenuItem(
             title: entry.title,
-            action: isCurrent ? #selector(togglePlayPause) : #selector(playPrevious(_:)),
+            action: isCurrent ? #selector(togglePlayPause) : nil,
             keyEquivalent: "")
         item.target = self
         item.attributedTitle = trackTitle(entry, isCurrent: isCurrent)
 
-        if isCurrent {
-            // Only the current track shows art, styled to match the active selection.
-            if let url = entry.coverURL, let original = nowPlaying.cachedArtwork(for: url) {
-                let styled = ArtworkTransform.apply(original, style: ArtworkTransform.current)
-                styled.size = NSSize(width: 38, height: 38)
-                item.image = styled
-            }
-        } else {
-            item.representedObject = entry.id   // navigation target for playPrevious
+        // Only the current track shows art, styled to match the active selection.
+        if isCurrent, let url = entry.coverURL, let original = nowPlaying.cachedArtwork(for: url) {
+            let styled = ArtworkTransform.apply(original, style: ArtworkTransform.current)
+            styled.size = NSSize(width: 38, height: 38)
+            item.image = styled
         }
         return item
     }
@@ -237,13 +216,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func togglePlayPause() {
         ipc.send("playpause")
-    }
-
-    /// Step back through play history to the clicked recent track (by id).
-    @objc private func playPrevious(_ sender: NSMenuItem) {
-        guard let targetId = sender.representedObject as? String else { return }
-        navTarget = (targetId, 8)
-        ipc.send("previous")
     }
 
     @objc private func selectStyle(_ sender: NSMenuItem) {

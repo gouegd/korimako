@@ -183,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             action: isCurrent ? #selector(togglePlayPause) : nil,
             keyEquivalent: "")
         item.target = self
+        item.isEnabled = isCurrent
         item.attributedTitle = trackTitle(entry, isCurrent: isCurrent)
 
         // Only the current track shows art, styled to match the active selection.

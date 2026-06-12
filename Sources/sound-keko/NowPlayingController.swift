@@ -154,4 +154,8 @@ final class NowPlayingController {
         guard let url = currentCoverURL, let original = originalCache[url] else { return }
         setStyledArtwork(original)
     }
+
+    /// The cached original cover image for a URL, if it has been downloaded.
+    /// Used by the menu to show thumbnails for recently played tracks.
+    func cachedArtwork(for url: String) -> NSImage? { originalCache[url] }
 }

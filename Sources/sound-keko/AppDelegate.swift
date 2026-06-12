@@ -1,16 +1,23 @@
 import AppKit
 import ServiceManagement
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let ipc = NcspotIPC()
     private let nowPlaying = NowPlayingController()
 
     private var connected = false
-    private let trackItem = NSMenuItem(title: "Connecting…", action: nil, keyEquivalent: "")
-    private let launchAtLoginItem = NSMenuItem(
-        title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-    private let styleSubmenu = NSMenu()
+
+    /// Recently played, most-recent-first; index 0 is the current track.
+    /// Capped at `historyLimit` (current + the latest two).
+    private struct TrackEntry {
+        let id: String
+        let title: String
+        let artist: String
+        let coverURL: String?
+    }
+    private var history: [TrackEntry] = []
+    private static let historyLimit = 3
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -18,46 +25,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.imagePosition = .imageLeading
         setIcon("music.note")
-        buildMenu()
+
+        let menu = NSMenu()
+        menu.delegate = self                 // rebuilt on open via menuNeedsUpdate
+        menu.autoenablesItems = false        // let informational track rows render normally
+        statusItem.menu = menu
+        populate(menu)
 
         nowPlaying.onCommand = { [weak self] command in self?.ipc.send(command) }
         ipc.onConnected = { [weak self] connected in self?.handleConnection(connected) }
         ipc.onStatus = { [weak self] status in self?.handleStatus(status) }
         ipc.start()
-    }
-
-    // MARK: - Menu
-
-    private func buildMenu() {
-        let menu = NSMenu()
-        trackItem.isEnabled = false
-        menu.addItem(trackItem)
-        menu.addItem(.separator())
-
-        // Artwork style picker (live: re-renders the current cover on change).
-        let styleItem = NSMenuItem(title: "Artwork Style", action: nil, keyEquivalent: "")
-        for style in ArtworkStyle.allCases {
-            let item = NSMenuItem(
-                title: style.displayName, action: #selector(selectStyle(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = style.rawValue
-            item.state = style == ArtworkTransform.current ? .on : .off
-            styleSubmenu.addItem(item)
-        }
-        styleItem.submenu = styleSubmenu
-        menu.addItem(styleItem)
-        menu.addItem(.separator())
-
-        launchAtLoginItem.target = self
-        launchAtLoginItem.state = isLaunchAtLoginEnabled ? .on : .off
-        menu.addItem(launchAtLoginItem)
-
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit sound-keko", action: #selector(quit), keyEquivalent: "q")
-        quit.target = self
-        menu.addItem(quit)
-
-        statusItem.menu = menu
     }
 
     // MARK: - IPC callbacks
@@ -71,31 +49,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleStatus(_ status: NcspotStatus) {
-        nowPlaying.update(status: status)
+        nowPlaying.update(status: status)   // fetches/caches current cover first
+        updateHistory(status)
         render(status)
     }
 
-    // MARK: - Menubar rendering
+    private func updateHistory(_ status: NcspotStatus) {
+        guard let track = status.playable, let id = track.id else { return }
+        guard history.first?.id != id else { return }   // same track (pause / seek / tick)
+        history.insert(TrackEntry(id: id,
+                                  title: track.title ?? "Unknown",
+                                  artist: track.artists?.first ?? "",
+                                  coverURL: track.cover_url),
+                       at: 0)
+        if history.count > Self.historyLimit {
+            history.removeLast(history.count - Self.historyLimit)
+        }
+        Log.debug("history: \(history.map(\.title))")
+    }
+
+    // MARK: - Menubar icon + title (updates live)
 
     private func render(_ status: NcspotStatus?) {
         guard connected, let status, let track = status.playable else {
             setIcon("music.note")
             statusItem.button?.title = ""
-            trackItem.title = connected ? "Nothing playing" : "ncspot not running"
             return
         }
-
         let artist = track.artists?.first ?? ""
         let title = track.title ?? ""
         let label = artist.isEmpty ? title : "\(artist) – \(title)"
-
         switch status.mode {
         case .playing: setIcon("play.fill")
         case .paused:  setIcon("pause.fill")
         case .stopped: setIcon("music.note")
         }
         statusItem.button?.title = " " + truncate(label, max: 45)
-        trackItem.title = label
     }
 
     private func setIcon(_ symbol: String) {
@@ -108,7 +97,108 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         s.count <= max ? s : String(s.prefix(max - 1)) + "…"
     }
 
-    // MARK: - Launch at login
+    // MARK: - Menu (rebuilt each time it opens)
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        populate(menu)
+    }
+
+    private func populate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        // Now playing (▶) + recently played, each with its album art.
+        if connected, !history.isEmpty {
+            for (index, entry) in history.enumerated() {
+                if index == 1 { menu.addItem(sectionHeader("Recently played")) }
+                menu.addItem(trackItem(entry, isCurrent: index == 0))
+            }
+        } else {
+            let placeholder = NSMenuItem(
+                title: connected ? "Nothing playing" : "ncspot not running",
+                action: nil, keyEquivalent: "")
+            placeholder.isEnabled = false
+            menu.addItem(placeholder)
+        }
+        menu.addItem(.separator())
+
+        // Artwork style picker.
+        let styleItem = NSMenuItem(title: "Artwork Style", action: nil, keyEquivalent: "")
+        let styleMenu = NSMenu()
+        for style in ArtworkStyle.allCases {
+            let item = NSMenuItem(
+                title: style.displayName, action: #selector(selectStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = style.rawValue
+            item.state = style == ArtworkTransform.current ? .on : .off
+            styleMenu.addItem(item)
+        }
+        styleItem.submenu = styleMenu
+        menu.addItem(styleItem)
+        menu.addItem(.separator())
+
+        // Launch at Login.
+        let launch = NSMenuItem(
+            title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        launch.target = self
+        launch.state = isLaunchAtLoginEnabled ? .on : .off
+        menu.addItem(launch)
+        menu.addItem(.separator())
+
+        // Quit.
+        let quit = NSMenuItem(title: "Quit sound-keko", action: #selector(quit), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
+    }
+
+    private func sectionHeader(_ text: String) -> NSMenuItem {
+        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        item.attributedTitle = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+        return item
+    }
+
+    private func trackItem(_ entry: TrackEntry, isCurrent: Bool) -> NSMenuItem {
+        let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
+        item.attributedTitle = trackTitle(entry, isCurrent: isCurrent)
+        if let url = entry.coverURL, let image = nowPlaying.cachedArtwork(for: url) {
+            let thumb = image.copy() as! NSImage   // own size; cache image untouched
+            thumb.size = NSSize(width: 38, height: 38)
+            item.image = thumb
+        }
+        return item
+    }
+
+    private func trackTitle(_ entry: TrackEntry, isCurrent: Bool) -> NSAttributedString {
+        let para = NSMutableParagraphStyle()
+        para.lineBreakMode = .byTruncatingTail
+        let titleText = (isCurrent ? "▶ " : "") + (entry.title.isEmpty ? "Unknown" : entry.title)
+        let result = NSMutableAttributedString(string: titleText, attributes: [
+            .font: NSFont.menuFont(ofSize: 0),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: para,
+        ])
+        if !entry.artist.isEmpty {
+            result.append(NSAttributedString(string: "\n" + entry.artist, attributes: [
+                .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: para,
+            ]))
+        }
+        return result
+    }
+
+    // MARK: - Actions
+
+    @objc private func selectStyle(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let style = ArtworkStyle(rawValue: raw) else { return }
+        ArtworkTransform.current = style
+        nowPlaying.restyleCurrentArtwork()
+        Log.debug("artwork style -> \(style.rawValue)")
+    }
 
     private var isLaunchAtLoginEnabled: Bool { SMAppService.mainApp.status == .enabled }
 
@@ -122,18 +212,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             NSLog("sound-keko: launch-at-login toggle failed: \(error)")
         }
-        launchAtLoginItem.state = isLaunchAtLoginEnabled ? .on : .off
-    }
-
-    @objc private func selectStyle(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let style = ArtworkStyle(rawValue: raw) else { return }
-        ArtworkTransform.current = style
-        for item in styleSubmenu.items {
-            item.state = (item.representedObject as? String) == raw ? .on : .off
-        }
-        nowPlaying.restyleCurrentArtwork()
-        Log.debug("artwork style -> \(style.rawValue)")
     }
 
     @objc private func quit() {

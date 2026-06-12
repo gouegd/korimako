@@ -9,6 +9,9 @@ import MediaPlayer
 final class NowPlayingController {
     /// Emits ncspot command tokens ("playpause" / "next" / "previous").
     var onCommand: ((String) -> Void)?
+    /// Fired (main thread) with a cover URL once its image finishes downloading
+    /// and is cached — lets the menu refresh to show a just-arrived thumbnail.
+    var onArtworkLoaded: ((String) -> Void)?
 
     private let infoCenter = MPNowPlayingInfoCenter.default()
     private let commandCenter = MPRemoteCommandCenter.shared()
@@ -137,6 +140,7 @@ final class NowPlayingController {
                 self.originalCache[url] = image
                 guard self.lastTrackId == trackId else { return }   // track moved on
                 self.setStyledArtwork(image)
+                self.onArtworkLoaded?(url)
             }
         }.resume()
     }

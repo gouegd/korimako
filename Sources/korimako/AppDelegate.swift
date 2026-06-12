@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         populate(menu)
 
         nowPlaying.onCommand = { [weak self] command in self?.ipc.send(command) }
+        nowPlaying.onArtworkLoaded = { [weak self] _ in self?.refreshMenuIfOpen() }
         ipc.onConnected = { [weak self] connected in self?.handleConnection(connected) }
         ipc.onStatus = { [weak self] status in self?.handleStatus(status) }
         ipc.start()

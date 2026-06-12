@@ -14,9 +14,10 @@
 
 ## Features
 
-**Your keyboard media keys — ⏮ ⏯ ⏭ — now control ncspot.** korimako registers
-as a Now Playing source so it wins key ownership over browsers and other apps.
-Pause ncspot and the keys hand back automatically, just like Spotify or Music would.
+**Your keyboard media keys — ⏮ ⏯ ⏭ — can now control ncspot.** korimako registers
+as a Now Playing source, so the keys follow whatever is currently playing: ncspot
+when it's active, your browser when a video is playing there, just like Spotify or
+Music would behave.
 
 Your current track is always visible in the menubar, and the menu keeps a short
 history of what you've been listening to with styled album art.

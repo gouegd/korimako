@@ -7,6 +7,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let nowPlaying = NowPlayingController()
 
     private var connected = false
+    private var menuIsOpen = false
+
+    /// When the user clicks a recent track we step back to it by repeatedly
+    /// sending `previous` until ncspot's current track matches this id (the
+    /// first `previous` may just restart the current track, so we can't count).
+    private var navTarget: (id: String, attemptsLeft: Int)?
 
     /// Recently played, most-recent-first; index 0 is the current track.
     /// Capped at `historyLimit` (current + the latest two).
@@ -27,8 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setIcon("music.note")
 
         let menu = NSMenu()
-        menu.delegate = self                 // rebuilt on open via menuNeedsUpdate
-        menu.autoenablesItems = false        // let informational track rows render normally
+        menu.delegate = self
+        menu.autoenablesItems = false        // let informational rows render normally
         statusItem.menu = menu
         populate(menu)
 
@@ -45,18 +51,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !connected {
             nowPlaying.clear()
             render(nil)
+            refreshMenuIfOpen()
         }
     }
 
     private func handleStatus(_ status: NcspotStatus) {
-        nowPlaying.update(status: status)   // fetches/caches current cover first
-        updateHistory(status)
+        nowPlaying.update(status: status)         // fetches/caches current cover first
+        let trackChanged = updateHistory(status)
         render(status)
+        advanceNavigation(currentId: status.playable?.id)
+        if trackChanged { refreshMenuIfOpen() }   // keep an open menu live
     }
 
-    private func updateHistory(_ status: NcspotStatus) {
-        guard let track = status.playable, let id = track.id else { return }
-        guard history.first?.id != id else { return }   // same track (pause / seek / tick)
+    /// Returns true if the current track changed. De-dupes so navigating back
+    /// to an already-listed track doesn't show it twice.
+    @discardableResult
+    private func updateHistory(_ status: NcspotStatus) -> Bool {
+        guard let track = status.playable, let id = track.id else { return false }
+        guard history.first?.id != id else { return false }   // same track (pause/seek/tick)
+        history.removeAll { $0.id == id }
         history.insert(TrackEntry(id: id,
                                   title: track.title ?? "Unknown",
                                   artist: track.artists?.first ?? "",
@@ -66,6 +79,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             history.removeLast(history.count - Self.historyLimit)
         }
         Log.debug("history: \(history.map(\.title))")
+        return true
+    }
+
+    /// Drive the "click a recent track → step back to it" navigation.
+    private func advanceNavigation(currentId: String?) {
+        guard let nav = navTarget else { return }
+        if currentId == nav.id {
+            navTarget = nil                                   // arrived
+        } else if nav.attemptsLeft > 0 {
+            navTarget = (nav.id, nav.attemptsLeft - 1)
+            ipc.send("previous")
+        } else {
+            navTarget = nil                                   // give up, don't loop forever
+        }
     }
 
     // MARK: - Menubar icon + title (updates live)
@@ -97,16 +124,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         s.count <= max ? s : String(s.prefix(max - 1)) + "…"
     }
 
-    // MARK: - Menu (rebuilt each time it opens)
+    // MARK: - Menu
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
+    func menuWillOpen(_ menu: NSMenu) { menuIsOpen = true }
+    func menuDidClose(_ menu: NSMenu) { menuIsOpen = false }
+    func menuNeedsUpdate(_ menu: NSMenu) { populate(menu) }
+
+    private func refreshMenuIfOpen() {
+        guard menuIsOpen, let menu = statusItem.menu else { return }
         populate(menu)
     }
 
     private func populate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Now playing (▶) + recently played, each with its album art.
+        // Now playing (▶) + recently played.
         if connected, !history.isEmpty {
             for (index, entry) in history.enumerated() {
                 if index == 1 { menu.addItem(sectionHeader("Recently played")) }
@@ -177,9 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.image = styled
             }
         } else {
-            // Clicking a recent track navigates back to it (ncspot `previous`
-            // follows play history). Item at index i → send `previous` i times.
-            item.representedObject = index
+            item.representedObject = entry.id   // navigation target for playPrevious
         }
         return item
     }
@@ -209,10 +239,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ipc.send("playpause")
     }
 
-    /// Step back through play history to the clicked recent track.
+    /// Step back through play history to the clicked recent track (by id).
     @objc private func playPrevious(_ sender: NSMenuItem) {
-        let steps = (sender.representedObject as? Int) ?? 1
-        for _ in 0..<steps { ipc.send("previous") }
+        guard let targetId = sender.representedObject as? String else { return }
+        navTarget = (targetId, 8)
+        ipc.send("previous")
     }
 
     @objc private func selectStyle(_ sender: NSMenuItem) {
@@ -220,6 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let style = ArtworkStyle(rawValue: raw) else { return }
         ArtworkTransform.current = style
         nowPlaying.restyleCurrentArtwork()
+        refreshMenuIfOpen()
         Log.debug("artwork style -> \(style.rawValue)")
     }
 

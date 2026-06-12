@@ -110,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if connected, !history.isEmpty {
             for (index, entry) in history.enumerated() {
                 if index == 1 { menu.addItem(sectionHeader("Recently played")) }
-                menu.addItem(trackItem(entry, isCurrent: index == 0))
+                menu.addItem(trackItem(entry, index: index))
             }
         } else {
             let placeholder = NSMenuItem(
@@ -160,13 +160,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    private func trackItem(_ entry: TrackEntry, isCurrent: Bool) -> NSMenuItem {
-        let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
+    private func trackItem(_ entry: TrackEntry, index: Int) -> NSMenuItem {
+        let isCurrent = index == 0
+        let item = NSMenuItem(
+            title: entry.title,
+            action: isCurrent ? #selector(togglePlayPause) : #selector(playPrevious(_:)),
+            keyEquivalent: "")
+        item.target = self
         item.attributedTitle = trackTitle(entry, isCurrent: isCurrent)
-        if let url = entry.coverURL, let image = nowPlaying.cachedArtwork(for: url) {
-            let thumb = image.copy() as! NSImage   // own size; cache image untouched
-            thumb.size = NSSize(width: 38, height: 38)
-            item.image = thumb
+
+        if isCurrent {
+            // Only the current track shows art, styled to match the active selection.
+            if let url = entry.coverURL, let original = nowPlaying.cachedArtwork(for: url) {
+                let styled = ArtworkTransform.apply(original, style: ArtworkTransform.current)
+                styled.size = NSSize(width: 38, height: 38)
+                item.image = styled
+            }
+        } else {
+            // Clicking a recent track navigates back to it (ncspot `previous`
+            // follows play history). Item at index i → send `previous` i times.
+            item.representedObject = index
         }
         return item
     }
@@ -191,6 +204,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: - Actions
+
+    @objc private func togglePlayPause() {
+        ipc.send("playpause")
+    }
+
+    /// Step back through play history to the clicked recent track.
+    @objc private func playPrevious(_ sender: NSMenuItem) {
+        let steps = (sender.representedObject as? Int) ?? 1
+        for _ in 0..<steps { ipc.send("previous") }
+    }
 
     @objc private func selectStyle(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,

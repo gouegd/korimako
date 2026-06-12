@@ -24,5 +24,7 @@
     <string>NSApplication</string>
     <key>NSSupportsAutomaticTermination</key>
     <false/>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
 </dict>
 </plist>

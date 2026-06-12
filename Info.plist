@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>sound-keko</string>
+    <string>korimako</string>
     <key>CFBundleDisplayName</key>
-    <string>sound-keko</string>
+    <string>korimako</string>
     <key>CFBundleIdentifier</key>
-    <string>app.soundkeko</string>
+    <string>app.korimako</string>
     <key>CFBundleExecutable</key>
-    <string>sound-keko</string>
+    <string>korimako</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

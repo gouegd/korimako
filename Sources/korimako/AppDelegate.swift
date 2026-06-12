@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setIcon(_ symbol: String) {
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "sound-keko")
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "korimako")
         image?.isTemplate = true
         statusItem.button?.image = image
     }
@@ -158,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         // Quit.
-        let quit = NSMenuItem(title: "Quit sound-keko", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit korimako", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }
@@ -237,7 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try SMAppService.mainApp.register()
             }
         } catch {
-            NSLog("sound-keko: launch-at-login toggle failed: \(error)")
+            NSLog("korimako: launch-at-login toggle failed: \(error)")
         }
     }
 

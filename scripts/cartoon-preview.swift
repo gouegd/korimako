@@ -1,4 +1,4 @@
-// Downloads an album cover URL, applies the same CIComicEffect sound-keko uses,
+// Downloads an album cover URL, applies the same CIComicEffect korimako uses,
 // and writes a side-by-side [original | cartoon] PNG you can `open`. POC aid.
 //   swiftc -o /tmp/cartoonprev scripts/cartoon-preview.swift
 //   /tmp/cartoonprev "<cover_url>" [out.png]
@@ -15,7 +15,7 @@ let args = CommandLine.arguments
 guard args.count >= 2, let url = URL(string: args[1]) else {
     die("usage: cartoon-preview <cover_url> [out.png]")
 }
-let outPath = args.count >= 3 ? args[2] : "/tmp/sound-keko-cartoon-poc.png"
+let outPath = args.count >= 3 ? args[2] : "/tmp/korimako-cartoon-poc.png"
 
 guard let data = try? Data(contentsOf: url), let original = NSImage(data: data) else {
     die("failed to download/decode \(url)")

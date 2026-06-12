@@ -1,6 +1,6 @@
 // Test helper: send a media command to whatever the *system* considers the
 // current Now Playing app, via the private MediaRemote framework. Used to
-// verify end-to-end that sound-keko owns the media keys and forwards to ncspot.
+// verify end-to-end that korimako owns the media keys and forwards to ncspot.
 //
 //   swiftc -o /tmp/mrsend scripts/send-system-mediakey.swift
 //   /tmp/mrsend 2   # 0=play 1=pause 2=togglePlayPause 4=next 5=previous

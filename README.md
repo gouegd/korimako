@@ -1,4 +1,4 @@
-# sound-keko
+# korimako
 
 A tiny macOS menubar app that makes your hardware **media keys** (play/pause,
 next, previous) control [ncspot](https://github.com/hrkfdn/ncspot).
@@ -10,7 +10,7 @@ Center, and forwards key presses to ncspot over its IPC socket.
 ## How it works
 
 ```
- media key  ──▶  MPRemoteCommandCenter  ──▶  sound-keko  ──▶  ncspot.sock
+ media key  ──▶  MPRemoteCommandCenter  ──▶  korimako  ──▶  ncspot.sock
  (play/pause)                                    │              (playpause/next/previous)
                                                  ▼
  menubar + Control Center  ◀──  MPNowPlayingInfoCenter  ◀──  JSON status stream
@@ -24,7 +24,7 @@ Center, and forwards key presses to ncspot over its IPC socket.
   `MPRemoteCommandCenter` — sufficient on macOS 13–26, and it preserves the
   system's natural now-playing handoff (pause ncspot and your browser gets the
   keys, like Spotify/Music). A private `MediaRemote` eligibility nudge is
-  available as an escape hatch via `SOUND_KEKO_USE_PRIVATE=1`, but is off by
+  available as an escape hatch via `KORIMAKO_USE_PRIVATE=1`, but is off by
   default (it actually *blocks* the handoff, so you likely never want it). The
   Control Center **scrubber** is mapped to ncspot's `seek`, so you can drag to
   any position in the track.
@@ -40,14 +40,14 @@ Center, and forwards key presses to ncspot over its IPC socket.
 ## Build & run
 
 ```sh
-./scripts/build-app.sh          # builds sound-keko.app (ad-hoc signed)
-open sound-keko.app             # launch (menubar icon appears, no Dock icon)
+./scripts/build-app.sh          # builds korimako.app (ad-hoc signed)
+open korimako.app             # launch (menubar icon appears, no Dock icon)
 ```
 
 Install it for everyday use:
 
 ```sh
-cp -R sound-keko.app /Applications/
+cp -R korimako.app /Applications/
 ```
 
 Then enable **Launch at Login** from the menubar menu.
@@ -65,15 +65,15 @@ Then enable **Launch at Login** from the menubar menu.
 
 Built with SwiftPM; `scripts/build-app.sh` produces the signed `.app`.
 
-- **Debug logging** — run with `SOUND_KEKO_DEBUG=1` to log IPC, remote commands,
+- **Debug logging** — run with `KORIMAKO_DEBUG=1` to log IPC, remote commands,
   and now-playing updates (via NSLog / stderr).
-- **Artwork styles** live in `Sources/sound-keko/ArtworkTransform.swift`. The
+- **Artwork styles** live in `Sources/korimako/ArtworkTransform.swift`. The
   `Cartoon` style is a small Core Image pipeline; its main knobs are the posterize
   `levels` (4), edge `threshold` (0.22) and `intensity` (4).
 - **Preview a style** through the *real* pipeline without touching Control Center
   — renders a side-by-side `[original | styled]` PNG:
   ```sh
-  ./sound-keko.app/Contents/MacOS/sound-keko --render <style> <coverURL> [out.png]
+  ./korimako.app/Contents/MacOS/korimako --render <style> <coverURL> [out.png]
   # e.g. --render cartoon https://i.scdn.co/image/<id> /tmp/out.png
   ```
 - **Watch ncspot live** — `scripts/watch-ncspot.py` prints playback/track changes

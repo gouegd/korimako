@@ -6,16 +6,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 CONFIG="${1:-release}"
-APP="$ROOT/sound-keko.app"
+APP="$ROOT/korimako.app"
 
 echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/sound-keko"
+BIN="$(swift build -c "$CONFIG" --show-bin-path)/korimako"
 
-echo "==> assembling sound-keko.app"
+echo "==> assembling korimako.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/sound-keko"
+cp "$BIN" "$APP/Contents/MacOS/korimako"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
     cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"

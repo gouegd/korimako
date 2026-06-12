@@ -18,7 +18,7 @@ final class NcspotIPC {
     private var fd: Int32 = -1
     private let fdLock = NSLock()
     private var running = false
-    private let queue = DispatchQueue(label: "app.soundkeko.ipc-reader")
+    private let queue = DispatchQueue(label: "app.korimako.ipc-reader")
 
     func start() {
         guard !running else { return }

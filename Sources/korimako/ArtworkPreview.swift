@@ -1,7 +1,7 @@
 import AppKit
 
 /// Dev tool: render a cover URL through a style and write an
-/// [original | styled] side-by-side PNG. Invoked via `sound-keko --render`.
+/// [original | styled] side-by-side PNG. Invoked via `korimako --render`.
 /// Reuses the exact `ArtworkTransform` pipeline so the preview matches what
 /// Control Center shows.
 enum ArtworkPreview {

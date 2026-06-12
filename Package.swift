@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "sound-keko",
+    name: "korimako",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "sound-keko",
-            path: "Sources/sound-keko",
+            name: "korimako",
+            path: "Sources/korimako",
             // AppKit + manual threading; Swift 5 mode keeps strict-concurrency
             // checks from fighting the POSIX socket / callback design.
             swiftSettings: [.swiftLanguageMode(.v5)]

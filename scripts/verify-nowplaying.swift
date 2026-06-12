@@ -1,5 +1,5 @@
 // Prints the system-wide "Now Playing" info dict via the private MediaRemote
-// framework. Used to confirm sound-keko registered metadata system-wide.
+// framework. Used to confirm korimako registered metadata system-wide.
 //   swiftc -o /tmp/npinfo scripts/verify-nowplaying.swift && /tmp/npinfo
 import Foundation
 

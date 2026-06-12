@@ -1,4 +1,4 @@
 .build/
-sound-keko.app/
+korimako.app/
 *.swiftpm
 .DS_Store

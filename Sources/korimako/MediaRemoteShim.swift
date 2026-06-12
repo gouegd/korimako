@@ -6,7 +6,7 @@ import Foundation
 /// OFF by default. On macOS 13–26 the public MediaPlayer API alone is enough to
 /// own the media keys, and skipping this nudge preserves the system's natural
 /// now-playing handoff (pause ncspot → your browser gets the keys, like
-/// Spotify/Music). Opt in with `SOUND_KEKO_USE_PRIVATE=1` only if a future macOS
+/// Spotify/Music). Opt in with `KORIMAKO_USE_PRIVATE=1` only if a future macOS
 /// stops routing media keys without it.
 enum MediaRemoteShim {
     private typealias SetCanBeNowPlayingFn = @convention(c) (Bool) -> Void
@@ -17,7 +17,7 @@ enum MediaRemoteShim {
     private(set) static var isAvailable = false
 
     private static var privateEnabled: Bool {
-        ProcessInfo.processInfo.environment["SOUND_KEKO_USE_PRIVATE"] != nil
+        ProcessInfo.processInfo.environment["KORIMAKO_USE_PRIVATE"] != nil
     }
 
     /// Declare (or revoke) eligibility to become the Now Playing app.

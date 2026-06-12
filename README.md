@@ -1,102 +1,110 @@
-# korimako
+<div align="center">
+  <img src="Resources/AppIcon-source.png" width="128" alt="korimako icon"><br><br>
+  <h1>korimako</h1>
+  <p>Hardware media keys → <a href="https://github.com/hrkfdn/ncspot">ncspot</a>, via macOS Now Playing</p>
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-C95228?style=flat-square&logo=apple&logoColor=EDE8DC">
+  <img alt="Swift 5" src="https://img.shields.io/badge/Swift-5-C95228?style=flat-square&labelColor=1B3A2A&logo=swift&logoColor=E8A82E">
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-E8A82E?style=flat-square&labelColor=1B3A2A">
+  <img alt="no Xcode" src="https://img.shields.io/badge/no%20Xcode-required-C95228?style=flat-square&labelColor=1B3A2A">
+</div>
 
-> *Korimako* is the Māori name for the New Zealand bellbird — known for its
-> clear, musical call.
+<br>
 
-A tiny macOS menubar app that makes your hardware **media keys** (play/pause,
-next, previous) control [ncspot](https://github.com/hrkfdn/ncspot).
-
-It registers as a system **Now Playing** source so it wins media-key ownership
-over browsers and other apps, shows the current track in the menubar and Control
-Center, and forwards key presses to ncspot over its IPC socket.
+*Korimako* is the te reo Māori name for the New Zealand bellbird — named for its clear, bell-like song. This app does the same: it listens for media key presses and sings them across to ncspot.
 
 ## How it works
 
 ```
  media key  ──▶  MPRemoteCommandCenter  ──▶  korimako  ──▶  ncspot.sock
- (play/pause)                                    │           (playpause/next/previous)
+ (play/pause)                                    │           (playpause/next/previous/seek)
                                                  ▼
  menubar + Control Center  ◀──  MPNowPlayingInfoCenter  ◀──  JSON status stream
 ```
 
-- **IPC**: ncspot exposes a Unix domain socket (one connection, bidirectional).
-  Status frames are newline-delimited JSON; commands are plain text tokens.
-  Socket path is discovered via `ncspot info` (`USER_RUNTIME_PATH/ncspot.sock`),
-  falling back to `/tmp/ncspot-$UID/ncspot.sock`.
-- **Media keys**: handled entirely via the public `MPNowPlayingInfoCenter` +
-  `MPRemoteCommandCenter` — sufficient on macOS 13–26, and it preserves the
-  system's natural now-playing handoff (pause ncspot and your browser gets the
-  keys back, just like Spotify or Music). A private `MediaRemote` eligibility
-  nudge is available as an escape hatch via `KORIMAKO_USE_PRIVATE=1`, but is
-  off by default (it blocks handoff).
-- **Scrubber**: the Control Center position scrubber maps to ncspot's `seek`
-  command, so you can drag to any position in the current track.
-- **Resilience**: auto-reconnects when ncspot starts/stops. Relinquishes Now
-  Playing ownership when ncspot isn't running so keys fall back to other apps.
+- **Media keys** are claimed via the public `MPRemoteCommandCenter` — enough to
+  win ownership over browsers on macOS 13–26, and it preserves natural now-playing
+  handoff (pause ncspot and your browser gets the keys back, just like Spotify).
+- **IPC** uses ncspot's Unix domain socket (`USER_RUNTIME_PATH/ncspot.sock`,
+  discovered via `ncspot info`, with a `/tmp/ncspot-$UID` fallback). Status frames
+  are newline-delimited JSON; commands are plain text tokens.
+- **Scrubber** — the Control Center position scrubber maps to ncspot's `seek`
+  command, so you can drag to any point in the current track.
+- **Resilience** — auto-reconnects when ncspot starts/stops; relinquishes Now
+  Playing when ncspot isn't running so keys fall back to other apps.
 
 ## Requirements
 
 - macOS 13+ (Apple Silicon or Intel)
-- Swift toolchain (Command Line Tools — **no Xcode required**)
-- `ncspot` with IPC enabled (Homebrew's build includes it)
+- Swift Command Line Tools — **no Xcode required** (`xcode-select --install`)
+- `ncspot` with IPC (Homebrew's build includes it)
 
-## Build & run
-
-```sh
-./scripts/build-app.sh          # builds korimako.app (ad-hoc signed)
-open korimako.app               # launch — menubar icon appears, no Dock icon
-```
-
-Install for everyday use:
+## Install
 
 ```sh
+git clone https://github.com/gouegd/korimako
+cd korimako
+./scripts/build-app.sh          # produces korimako.app (ad-hoc signed)
 cp -R korimako.app /Applications/
+open /Applications/korimako.app
 ```
 
-Then enable **Launch at Login** from the menubar menu.
+The menubar icon appears; there is no Dock icon. Enable **Launch at Login**
+from the menubar menu for automatic start on login.
 
 ## Menu
 
-- **Current track** — album art thumbnail (styled per your Artwork Style
-  selection), ▶ artist – title. Click to play/pause.
-- **Recently played** — last two tracks (artist – title); informational.
-- **Artwork Style** — apply a Core Image effect to album art: Original,
-  Cartoon, Comic, Poster, Ink Sketch, Noir, Sepia, Pixel, Thermal, Neon
-  Edges. Applies immediately and persists across launches.
-- **Launch at Login** toggle
-- **Quit**
+| Item | Detail |
+|------|--------|
+| **▶ Current track** | Styled album art · artist – title · click to play/pause |
+| Recently played | Last two tracks (title + artist); informational |
+| **Artwork Style** | Core Image effect applied to album art — Original, Cartoon, Comic, Poster, Ink Sketch, Noir, Sepia, Pixel, Thermal, Neon Edges. Persists across launches. |
+| **Launch at Login** | Toggle via `SMAppService` (works best from `/Applications`) |
+| **Quit** | |
 
 ## Development
 
-Built with SwiftPM; `scripts/build-app.sh` assembles and ad-hoc-signs the
-`.app` bundle.
+<details>
+<summary>Debug, preview, and tuning</summary>
 
-**Debug logging** — set `KORIMAKO_DEBUG=1` to log IPC frames, remote
-commands, and now-playing state to stderr.
+**Debug logging** — set `KORIMAKO_DEBUG=1` to print IPC frames, remote
+commands, and now-playing state to stderr:
 
-**Artwork styles** live in `Sources/korimako/ArtworkTransform.swift`. The
-`Cartoon` style is a cel-shading pipeline (flat posterised fills + thresholded
-inked outlines). Key knobs: posterize `levels` (4), edge `threshold` (0.22),
-edge `intensity` (4).
+```sh
+KORIMAKO_DEBUG=1 open korimako.app
+# or tail the log:
+KORIMAKO_DEBUG=1 ./korimako.app/Contents/MacOS/korimako 2>/tmp/korimako.log &
+tail -f /tmp/korimako.log
+```
 
-**Preview a style** offline — renders a `[original | styled]` side-by-side PNG
-through the real pipeline without touching Control Center:
+**Preview an artwork style** without touching Control Center — renders a
+`[original | styled]` side-by-side PNG through the real pipeline:
 
 ```sh
 ./korimako.app/Contents/MacOS/korimako --render <style> <coverURL> [out.png]
-# e.g. --render cartoon https://i.scdn.co/image/<id> /tmp/preview.png
+# e.g.
+./korimako.app/Contents/MacOS/korimako --render cartoon https://i.scdn.co/image/<id> /tmp/preview.png
 ```
 
 **Watch ncspot live** — `scripts/watch-ncspot.py` tails the IPC socket and
-prints track/playback changes (read-only).
+prints track/playback changes (read-only, great for debugging).
+
+**Artwork styles** live in `Sources/korimako/ArtworkTransform.swift`. The
+`Cartoon` style is a cel-shading pipeline (flat posterised colour fills +
+thresholded inked outlines). Key knobs: posterize `levels` (4), edge
+`threshold` (0.22), edge `intensity` (4).
+
+**Private MediaRemote nudge** — `KORIMAKO_USE_PRIVATE=1` enables a private
+eligibility call. Off by default: it blocks now-playing handoff on macOS 15.4+.
+
+</details>
 
 ## Notes
 
-- Ad-hoc signed for personal use. macOS Gatekeeper may prompt you to approve
-  it on first launch.
-- Launch at Login uses `SMAppService` and works best when the app lives in
-  `/Applications`.
+- Ad-hoc signed for personal use. macOS Gatekeeper will prompt you to approve
+  it on first launch (System Settings → Privacy & Security → Open Anyway).
+- The private MediaRemote getters lie on macOS 15.4+ / macOS 26 — verify media
+  key behaviour with real key presses, not programmatic probes.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT © [gouegd](LICENSE)

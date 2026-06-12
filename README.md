@@ -10,7 +10,15 @@
 
 <br>
 
-*Korimako* is the te reo Māori name for the New Zealand bellbird — named for its clear, bell-like song. This app does the same: it listens for media key presses and sings them across to ncspot.
+*Korimako* is the te reo Māori name for the New Zealand bellbird, named for its clear, bell-like song. They have also been known to reproduce some sounds such as ringtones. Similarly, this app listens for media key presses and sings them across to `ncspot`.
+
+## Preview
+
+<img src="docs/screenshot-menubar.png" width="750" alt="Menubar showing the current track">
+
+<img src="docs/screenshot-menu-open.png" width="750" alt="Menu open — current track with art, recently played, style picker">
+
+<img src="docs/screenshot-control-center.png" width="750" alt="Control Center integration with position scrubber">
 
 ## How it works
 
@@ -104,6 +112,8 @@ eligibility call. Off by default: it blocks now-playing handoff on macOS 15.4+.
   it on first launch (System Settings → Privacy & Security → Open Anyway).
 - The private MediaRemote getters lie on macOS 15.4+ / macOS 26 — verify media
   key behaviour with real key presses, not programmatic probes.
+- Disclaimer: this is somewhat (as in, entirely) vibe-coded, I am yet to write
+  a single line of Swift. This is "works on my machine" software.
 
 ## License
 

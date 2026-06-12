@@ -12,11 +12,24 @@
 
 *Korimako* is the te reo Māori name for the New Zealand bellbird, named for its clear, bell-like song. They have also been known to reproduce some sounds such as ringtones. Similarly, this app listens for media key presses and sings them across to `ncspot`.
 
-## Preview
+## Features
+
+**Your keyboard media keys — ⏮ ⏯ ⏭ — now control ncspot.** korimako registers
+as a Now Playing source so it wins key ownership over browsers and other apps.
+Pause ncspot and the keys hand back automatically, just like Spotify or Music would.
+
+Your current track is always visible in the menubar, and the menu keeps a short
+history of what you've been listening to with styled album art.
 
 <img src="docs/screenshot-menubar.png" width="750" alt="Menubar showing the current track">
 
+The full menu shows the current track with album art, your two most recent tracks,
+and a style picker that applies Core Image effects to album art live.
+
 <img src="docs/screenshot-menu-open.png" width="750" alt="Menu open — current track with art, recently played, style picker">
+
+korimako also hooks into the macOS Control Center media widget — including the
+position scrubber, so you can seek to any point in the track from there.
 
 <img src="docs/screenshot-control-center.png" width="750" alt="Control Center integration with position scrubber">
 

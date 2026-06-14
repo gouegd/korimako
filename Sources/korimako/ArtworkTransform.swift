@@ -6,20 +6,17 @@ import CoreImage.CIFilterBuiltins
 /// effect applied after download, before the art reaches the system Now Playing
 /// UI. Hook point: `NowPlayingController.applyArtwork`.
 enum ArtworkStyle: String, CaseIterable {
-    case original, cartoon, comic, poster, ink, noir, sepia, pixel, thermal, edges
+    case original, flame, thermalClick, noir, sepia, pixel, thermal
 
     var displayName: String {
         switch self {
-        case .original: return "Original"
-        case .cartoon:  return "Cartoon"
-        case .comic:    return "Comic"
-        case .poster:   return "Poster"
-        case .ink:      return "Ink Sketch"
-        case .noir:     return "Noir"
-        case .sepia:    return "Sepia"
-        case .pixel:    return "Pixel"
-        case .thermal:  return "Thermal"
-        case .edges:    return "Neon Edges"
+        case .original:     return "Original"
+        case .flame:        return "Flame"
+        case .thermalClick: return "Thermal Click"
+        case .noir:         return "Noir"
+        case .sepia:        return "Sepia"
+        case .pixel:        return "Pixel"
+        case .thermal:      return "Thermal"
         }
     }
 }
@@ -40,42 +37,8 @@ enum ArtworkTransform {
 
     static func apply(_ image: NSImage, style: ArtworkStyle) -> NSImage {
         switch style {
-        case .original:
+        case .original, .flame, .thermalClick:
             return image
-        case .cartoon:
-            // Cel-shaded toon: strongly flattened colour fills + bold inked outlines.
-            return filter(image) { input in
-                // Fills: blur to merge detail into regions, punch colour, hard-band it.
-                let blur = CIFilter.gaussianBlur()
-                blur.inputImage = input.clampedToExtent()
-                blur.radius = 4
-                let controls = CIFilter.colorControls()
-                controls.inputImage = blur.outputImage
-                controls.saturation = 1.45
-                controls.contrast = 1.05
-                let poster = CIFilter.colorPosterize()
-                poster.inputImage = controls.outputImage
-                poster.levels = 4
-                // Outlines: pre-blur (kill texture) -> edges -> greyscale -> threshold
-                // to solid lines -> thicken -> invert to bold black-on-white.
-                let edgeBlur = CIFilter.gaussianBlur(); edgeBlur.inputImage = input.clampedToExtent(); edgeBlur.radius = 1.5
-                let edges = CIFilter.edges(); edges.inputImage = edgeBlur.outputImage; edges.intensity = 4.0
-                let mono = CIFilter.colorControls(); mono.inputImage = edges.outputImage; mono.saturation = 0
-                let thresh = CIFilter.colorThreshold(); thresh.inputImage = mono.outputImage; thresh.threshold = 0.22
-                let thick = CIFilter.morphologyMaximum(); thick.inputImage = thresh.outputImage; thick.radius = 1.5
-                let ink = CIFilter.colorInvert(); ink.inputImage = thick.outputImage
-                // Multiply bold black lines over the flat colour base.
-                let combine = CIFilter.multiplyBlendMode()
-                combine.backgroundImage = poster.outputImage
-                combine.inputImage = ink.outputImage
-                return combine.outputImage
-            }
-        case .comic:
-            return filter(image) { let f = CIFilter.comicEffect(); f.inputImage = $0; return f.outputImage }
-        case .poster:
-            return filter(image) { let f = CIFilter.colorPosterize(); f.inputImage = $0; f.levels = 6; return f.outputImage }
-        case .ink:
-            return filter(image) { let f = CIFilter.lineOverlay(); f.inputImage = $0; return f.outputImage }
         case .noir:
             return filter(image) { let f = CIFilter.photoEffectNoir(); f.inputImage = $0; return f.outputImage }
         case .sepia:
@@ -90,8 +53,6 @@ enum ArtworkTransform {
             }
         case .thermal:
             return filter(image) { let f = CIFilter.thermal(); f.inputImage = $0; return f.outputImage }
-        case .edges:
-            return filter(image) { let f = CIFilter.edges(); f.inputImage = $0; f.intensity = 1.0; return f.outputImage }
         }
     }
 

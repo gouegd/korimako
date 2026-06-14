@@ -8,17 +8,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var connected = false
     private var menuIsOpen = false
+    private var lastKnownMode: PlayMode = .stopped
+    private var playbackTimer: Timer?
 
-    /// Recently played, most-recent-first; index 0 is the current track.
-    /// Capped at `historyLimit` (current + the latest two).
+    /// Recently played, most-recent-first; index 0 is current, index 1 is previous.
     private struct TrackEntry {
         let id: String
         let title: String
         let artist: String
         let coverURL: String?
+        let duration: Int?    // milliseconds
+        let year: Int?
     }
     private var history: [TrackEntry] = []
-    private static let historyLimit = 3
+    private static let historyLimit = 2
+
+    /// Persisted across menu rebuilds; nil when not connected.
+    private var nowPlayingView: NowPlayingMenuView?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -29,14 +35,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let menu = NSMenu()
         menu.delegate = self
-        menu.autoenablesItems = false        // let informational rows render normally
+        menu.autoenablesItems = false
         statusItem.menu = menu
         populate(menu)
 
         nowPlaying.onCommand = { [weak self] command in self?.ipc.send(command) }
-        nowPlaying.onArtworkLoaded = { [weak self] _ in self?.refreshMenuIfOpen() }
+        nowPlaying.onArtworkLoaded = { [weak self] _ in
+            guard let self, self.menuIsOpen else { return }
+            self.updateNowPlayingView()
+        }
         ipc.onConnected = { [weak self] connected in self?.handleConnection(connected) }
-        ipc.onStatus = { [weak self] status in self?.handleStatus(status) }
+        ipc.onStatus    = { [weak self] status  in self?.handleStatus(status) }
         ipc.start()
     }
 
@@ -45,6 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func handleConnection(_ connected: Bool) {
         self.connected = connected
         if !connected {
+            stopPlaybackTimer()
+            nowPlayingView = nil
             nowPlaying.clear()
             render(nil)
             refreshMenuIfOpen()
@@ -52,23 +63,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleStatus(_ status: NcspotStatus) {
-        nowPlaying.update(status: status)         // fetches/caches current cover first
+        lastKnownMode = status.mode
+        nowPlaying.update(status: status)
         let trackChanged = updateHistory(status)
         render(status)
-        if trackChanged { refreshMenuIfOpen() }   // keep an open menu live
+        switch status.mode {
+        case .playing:
+            startPlaybackTimer()
+            if trackChanged { refreshMenuIfOpen() }
+            else if menuIsOpen { updateNowPlayingView() }
+        case .paused, .stopped:
+            stopPlaybackTimer()
+            if trackChanged { refreshMenuIfOpen() }
+            else { updateNowPlayingView() }   // immediate label freeze on pause
+        }
     }
 
-    /// Returns true if the current track changed. De-dupes so navigating back
-    /// to an already-listed track doesn't show it twice.
+    private func startPlaybackTimer() {
+        guard playbackTimer == nil else { return }
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self, self.menuIsOpen else { return }
+            self.updateNowPlayingView()
+        }
+        // .common mode fires in both .default and .eventTracking — needed so
+        // the timer ticks while NSMenu's event-tracking loop is running.
+        RunLoop.main.add(t, forMode: .common)
+        playbackTimer = t
+    }
+
+    private func stopPlaybackTimer() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+    }
+
     @discardableResult
     private func updateHistory(_ status: NcspotStatus) -> Bool {
         guard let track = status.playable, let id = track.id else { return false }
-        guard history.first?.id != id else { return false }   // same track (pause/seek/tick)
+        guard history.first?.id != id else { return false }
         history.removeAll { $0.id == id }
         history.insert(TrackEntry(id: id,
                                   title: track.title ?? "Unknown",
-                                  artist: track.artists?.first ?? "",
-                                  coverURL: track.cover_url),
+                                  artist: track.artistString,
+                                  coverURL: track.cover_url,
+                                  duration: track.duration,
+                                  year: track.year),
                        at: 0)
         if history.count > Self.historyLimit {
             history.removeLast(history.count - Self.historyLimit)
@@ -77,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return true
     }
 
-    // MARK: - Menubar icon + title (updates live)
+    // MARK: - Menubar icon + title
 
     private func render(_ status: NcspotStatus?) {
         guard connected, let status, let track = status.playable else {
@@ -85,15 +123,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusItem.button?.title = ""
             return
         }
-        let artist = track.artists?.first ?? ""
         let title = track.title ?? ""
-        let label = artist.isEmpty ? title : "\(artist) – \(title)"
         switch status.mode {
         case .playing: setIcon("play.fill")
         case .paused:  setIcon("pause.fill")
         case .stopped: setIcon("music.note")
         }
-        statusItem.button?.title = " " + truncate(label, max: 45)
+        statusItem.button?.title = " " + truncate(title, max: 45)
     }
 
     private func setIcon(_ symbol: String) {
@@ -120,22 +156,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func populate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Now playing (▶) + recently played.
-        if connected, !history.isEmpty {
-            for (index, entry) in history.enumerated() {
-                if index == 1 { menu.addItem(sectionHeader("Recently played")) }
-                menu.addItem(trackItem(entry, index: index))
+        // Widget (current track + optional previous track row)
+        if connected {
+            if nowPlayingView == nil {
+                let view = NowPlayingMenuView()
+                view.onPrevious   = { [weak self] in self?.ipc.send("previous") }
+                view.onNext       = { [weak self] in self?.ipc.send("next") }
+                view.onPlayPause  = { [weak self] in self?.ipc.send("playpause") }
+                view.onArtTap = { [weak self] in self?.ipc.send("playpause") }
+                nowPlayingView = view
             }
+            updateNowPlayingView()          // sets correct height before item is added
+            let item = NSMenuItem()
+            item.view = nowPlayingView!
+            menu.addItem(item)
         } else {
-            let placeholder = NSMenuItem(
-                title: connected ? "Nothing playing" : "ncspot not running",
-                action: nil, keyEquivalent: "")
+            let placeholder = NSMenuItem(title: "ncspot not running", action: nil, keyEquivalent: "")
             placeholder.isEnabled = false
             menu.addItem(placeholder)
         }
         menu.addItem(.separator())
 
-        // Artwork style picker.
+        // Artwork style picker
         let styleItem = NSMenuItem(title: "Artwork Style", action: nil, keyEquivalent: "")
         let styleMenu = NSMenu()
         for style in ArtworkStyle.allCases {
@@ -150,81 +192,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(styleItem)
         menu.addItem(.separator())
 
-        // Launch at Login.
+        // Launch at Login
         let launch = NSMenuItem(
             title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         launch.target = self
-        launch.state = isLaunchAtLoginEnabled ? .on : .off
+        launch.state  = isLaunchAtLoginEnabled ? .on : .off
         menu.addItem(launch)
         menu.addItem(.separator())
 
-        // Quit.
+        // Quit
         let quit = NSMenuItem(title: "Quit korimako", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }
 
-    private func sectionHeader(_ text: String) -> NSMenuItem {
-        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.attributedTitle = NSAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-            .foregroundColor: NSColor.secondaryLabelColor,
-        ])
-        return item
-    }
+    private func updateNowPlayingView() {
+        guard let view = nowPlayingView else { return }
 
-    private func trackItem(_ entry: TrackEntry, index: Int) -> NSMenuItem {
-        let isCurrent = index == 0
-        // Current track toggles play/pause; recents are informational
-        // (ncspot can't reliably jump to an arbitrary past track under shuffle).
-        let item = NSMenuItem(
-            title: entry.title,
-            action: isCurrent ? #selector(togglePlayPause) : nil,
-            keyEquivalent: "")
-        item.target = self
-        item.isEnabled = isCurrent
-        item.attributedTitle = trackTitle(entry, isCurrent: isCurrent)
+        let current = history.first
+        let prev    = history.count > 1 ? history[1] : nil
 
-        // Only the current track shows art, styled to match the active selection.
-        if isCurrent, let url = entry.coverURL, let original = nowPlaying.cachedArtwork(for: url) {
-            let styled = ArtworkTransform.apply(original, style: ArtworkTransform.current)
-            styled.size = NSSize(width: 38, height: 38)
-            item.image = styled
+        let artwork: NSImage? = current?.coverURL.flatMap { url in
+            guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
+            return ArtworkTransform.apply(orig, style: ArtworkTransform.current)
         }
-        return item
-    }
+        let needsFlicker = ArtworkTransform.current == .flame || ArtworkTransform.current == .thermalClick
+        let flickerArtwork: NSImage? = needsFlicker
+            ? current?.coverURL.flatMap { url in
+                guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
+                return ArtworkTransform.apply(orig, style: .thermal)
+              }
+            : nil
+        let flickerMode: FlickerImageView.FlickerMode = {
+            switch ArtworkTransform.current {
+            case .flame:        return .flame
+            case .thermalClick: return .onClick
+            default:            return .none
+            }
+        }()
 
-    private func trackTitle(_ entry: TrackEntry, isCurrent: Bool) -> NSAttributedString {
-        let para = NSMutableParagraphStyle()
-        para.lineBreakMode = .byTruncatingTail
-        let titleText = (isCurrent ? "▶ " : "") + (entry.title.isEmpty ? "Unknown" : entry.title)
-        let result = NSMutableAttributedString(string: titleText, attributes: [
-            .font: NSFont.menuFont(ofSize: 0),
-            .foregroundColor: NSColor.labelColor,
-            .paragraphStyle: para,
-        ])
-        if !entry.artist.isEmpty {
-            result.append(NSAttributedString(string: "\n" + entry.artist, attributes: [
-                .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
-                .foregroundColor: NSColor.secondaryLabelColor,
-                .paragraphStyle: para,
-            ]))
+        let isPlaying: Bool
+        let elapsed: TimeInterval
+        switch lastKnownMode {
+        case .playing(let startedAt):
+            isPlaying = true
+            elapsed   = max(0, Date().timeIntervalSince1970 - startedAt)
+        case .paused(let e):
+            isPlaying = false
+            elapsed   = e
+        case .stopped:
+            isPlaying = false
+            elapsed   = 0
         }
-        return result
+        let duration = TimeInterval(current?.duration ?? 0) / 1000.0
+
+        let prevArtwork: NSImage? = prev?.coverURL.flatMap { url in
+            guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
+            return ArtworkTransform.apply(orig, style: ArtworkTransform.current)
+        }
+
+        view.update(title: current?.title ?? "",
+                    artist: current?.artist ?? "",
+                    year: current?.year,
+                    artwork: artwork,
+                    flickerArtwork: flickerArtwork,
+                    flickerMode: flickerMode,
+                    isPlaying: isPlaying,
+                    elapsed: elapsed,
+                    duration: duration,
+                    prevTitle: prev?.title,
+                    prevArtist: prev?.artist,
+                    prevYear: prev?.year,
+                    prevArtwork: prevArtwork)
     }
 
     // MARK: - Actions
-
-    @objc private func togglePlayPause() {
-        ipc.send("playpause")
-    }
 
     @objc private func selectStyle(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let style = ArtworkStyle(rawValue: raw) else { return }
         ArtworkTransform.current = style
         nowPlaying.restyleCurrentArtwork()
+        updateNowPlayingView()
         refreshMenuIfOpen()
         Log.debug("artwork style -> \(style.rawValue)")
     }

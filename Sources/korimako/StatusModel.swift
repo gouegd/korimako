@@ -76,6 +76,7 @@ struct Playable: Decodable {
     let album: String?
     let duration: Int?       // milliseconds
     let cover_url: String?
+    let year: Int?
 
     var artistString: String { (artists ?? []).joined(separator: ", ") }
     var durationSeconds: TimeInterval? { duration.map { Double($0) / 1000.0 } }

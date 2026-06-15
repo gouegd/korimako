@@ -1,51 +1,57 @@
 import AppKit
 
 /// A single-line label that scrolls horizontally when its text is wider than the view.
-/// When text fits, it is horizontally centered. When it overflows, it pauses, scrolls
-/// to the end, pauses again, then resets — matching macOS Now Playing widget behaviour.
+///
+/// Uses a CATextLayer rather than an NSTextField: a layer-backed NSTextField inside a
+/// masksToBounds superview has its backing store optimised down to the visible region,
+/// so scrolling it merely slides an already-clipped bitmap and reveals blank space.
+/// A CATextLayer always rasterises its full string into its own backing, so translating
+/// it actually exposes the hidden text. Scrolling is driven by a keyframe animation on
+/// the host layer's sublayerTransform (AppKit does not manage sublayerTransform, so the
+/// layout system cannot reset it mid-animation).
 final class MarqueeLabel: NSView {
 
     // MARK: – Public
 
     var stringValue: String {
-        get { label.stringValue }
-        set { label.stringValue = newValue; resetAndRelayout() }
+        get { text }
+        set {
+            guard newValue != text else { return }
+            text = newValue
+            textLayer.string = newValue
+            resetScroll()
+        }
     }
 
     func configure(font: NSFont, color: NSColor) {
-        label.font      = font
-        label.textColor = color
+        self.font = font
+        textLayer.font     = CTFontCreateWithName(font.fontName as CFString, font.pointSize, nil)
+        textLayer.fontSize = font.pointSize
+        textLayer.foregroundColor = color.cgColor
+        resetScroll()
     }
 
     // MARK: – Private
 
-    private let label = NSTextField(labelWithString: "")
+    private var text = ""
+    private var font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
+    private let textLayer = CATextLayer()
+    private var lastLayoutWidth: CGFloat = 0
 
-    private var scrollTimer: Timer?
-    private var scrollOffset: CGFloat = 0
-    private var phase: Phase = .pauseAtStart(tick: 0)
-
-    private enum Phase {
-        case pauseAtStart(tick: Int)
-        case scrolling
-        case pauseAtEnd(tick: Int)
-    }
-
-    private let pauseTicksStart: Int  = 30    // 1.5 s at 20 Hz
-    private let pauseTicksEnd:   Int  = 20    // 1.0 s at 20 Hz
-    private let pxPerTick: CGFloat    = 1.5   // ≈ 30 px/s at 20 Hz
-
-    override var isFlipped: Bool { true }
+    // Not flipped: with a manually positioned sublayer we use the layer's native
+    // (y-up) coordinate space and centre the text vertically ourselves.
 
     // MARK: – Init
 
     init() {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.masksToBounds  = true
-        label.lineBreakMode        = .byClipping
-        label.maximumNumberOfLines = 1
-        addSubview(label)
+        layer?.masksToBounds = true
+        textLayer.truncationMode = .none
+        textLayer.isWrapped      = false
+        textLayer.alignmentMode  = .left
+        textLayer.contentsScale  = NSScreen.main?.backingScaleFactor ?? 2
+        layer?.addSublayer(textLayer)
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -53,74 +59,66 @@ final class MarqueeLabel: NSView {
 
     override func layout() {
         super.layout()
-        placeLabel()
-        let overflows = naturalWidth() > bounds.width
-        if overflows, scrollTimer == nil { startTimer() }
-        else if !overflows { stopTimer(); scrollOffset = 0; placeLabel() }
+        let w = bounds.width
+        guard w > 0 else { return }
+
+        let nw         = naturalWidth()
+        let animActive = layer?.animation(forKey: "marquee") != nil
+
+        guard w != lastLayoutWidth || (nw > w && !animActive) else { return }
+        lastLayoutWidth = w
+        resetScroll()
     }
 
     private func naturalWidth() -> CGFloat {
-        guard let font = label.font, !label.stringValue.isEmpty else { return 0 }
-        return ceil((label.stringValue as NSString)
+        guard !text.isEmpty else { return 0 }
+        return ceil((text as NSString)
             .size(withAttributes: [.font: font]).width) + 2
     }
 
-    private func placeLabel() {
-        let h  = bounds.height
-        let w  = bounds.width
+    // MARK: – Scroll (Core Animation on sublayerTransform)
+
+    private func resetScroll() {
+        let w = bounds.width > 0 ? bounds.width : lastLayoutWidth
+        guard w > 0 else { needsLayout = true; return }
+
         let nw = naturalWidth()
+        let h  = bounds.height > 0 ? bounds.height : frame.height
+        let lh = ceil(font.ascender - font.descender)
+        let y  = ((h - lh) / 2).rounded()
+
+        // Geometry reset must not itself animate.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.removeAnimation(forKey: "marquee")
+        layer?.sublayerTransform = CATransform3DIdentity
         if nw <= w {
-            label.frame = NSRect(x: (w - nw) / 2, y: 0, width: nw, height: h)
+            textLayer.frame = NSRect(x: (w - nw) / 2, y: y, width: max(nw, 1), height: lh)
         } else {
-            label.frame = NSRect(x: -scrollOffset, y: 0, width: nw + 8, height: h)
+            textLayer.frame = NSRect(x: 0, y: y, width: nw + 4, height: lh)
         }
+        CATransaction.commit()
+
+        if nw > w { animateScroll(overflow: nw - w + 8) }
     }
 
-    // MARK: – Timer
+    private func animateScroll(overflow: CGFloat) {
+        guard let lyr = layer else { needsLayout = true; return }
 
-    private func startTimer() {
-        scrollOffset = 0
-        phase = .pauseAtStart(tick: 0)
-        let t = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
-            self?.tick()
-        }
-        RunLoop.main.add(t, forMode: .common)
-        scrollTimer = t
-    }
+        let scrollDuration = Double(overflow) / 30.0
+        let total          = 1.5 + scrollDuration + 1.0 + 0.02
 
-    private func stopTimer() {
-        scrollTimer?.invalidate()
-        scrollTimer = nil
-    }
+        let t1 = NSNumber(value: 1.5 / total)
+        let t2 = NSNumber(value: (1.5 + scrollDuration) / total)
+        let t3 = NSNumber(value: (total - 0.02) / total)
 
-    private func resetAndRelayout() {
-        stopTimer()
-        scrollOffset = 0
-        phase = .pauseAtStart(tick: 0)
-        needsLayout = true
-    }
-
-    private func tick() {
-        guard !isHidden, window != nil else { return }
-        let overflow = naturalWidth() - bounds.width + 8
-
-        switch phase {
-        case .pauseAtStart(let n):
-            phase = n + 1 >= pauseTicksStart ? .scrolling : .pauseAtStart(tick: n + 1)
-
-        case .scrolling:
-            scrollOffset = min(scrollOffset + pxPerTick, overflow)
-            placeLabel()
-            if scrollOffset >= overflow { phase = .pauseAtEnd(tick: 0) }
-
-        case .pauseAtEnd(let n):
-            if n + 1 >= pauseTicksEnd {
-                scrollOffset = 0
-                phase = .pauseAtStart(tick: 0)
-                placeLabel()
-            } else {
-                phase = .pauseAtEnd(tick: n + 1)
-            }
-        }
+        let anim             = CAKeyframeAnimation(keyPath: "sublayerTransform.translation.x")
+        anim.values          = [0.0, 0.0, -overflow, -overflow, 0.0]
+        anim.keyTimes        = [0,   t1,   t2,        t3,        1  ]
+        anim.duration        = total
+        anim.repeatCount     = .infinity
+        anim.calculationMode = .linear
+        anim.isRemovedOnCompletion = false
+        lyr.add(anim, forKey: "marquee")
     }
 }

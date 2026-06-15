@@ -29,10 +29,6 @@ final class NowPlayingMenuView: NSView {
     private let prevArtistMarquee  = MarqueeLabel()
     private let prevTitleMarquee   = MarqueeLabel()
 
-    // MARK: – Hover
-    private var trackingArea: NSTrackingArea?
-    private var isHovered = false
-
     // MARK: – Tap debounce
     private var lastArtTap: Date = .distantPast
 
@@ -219,26 +215,4 @@ final class NowPlayingMenuView: NSView {
     }
 
 
-    // MARK: – Hover highlight
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let ta = trackingArea { removeTrackingArea(ta) }
-        let ta = NSTrackingArea(rect: bounds,
-                                options: [.mouseEnteredAndExited, .activeAlways],
-                                owner: self, userInfo: nil)
-        trackingArea = ta
-        addTrackingArea(ta)
-    }
-
-    override func mouseEntered(with event: NSEvent) { isHovered = true;  needsDisplay = true }
-    override func mouseExited(with event: NSEvent)  { isHovered = false; needsDisplay = true }
-
-    override func draw(_ dirtyRect: NSRect) {
-        if isHovered {
-            NSColor.selectedContentBackgroundColor.withAlphaComponent(0.08).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
-        }
-        super.draw(dirtyRect)
-    }
 }

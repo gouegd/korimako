@@ -128,10 +128,6 @@ eligibility call. Off by default: it blocks now-playing handoff on macOS 15.4+.
 
 - Add a minimal Preferences window to surface: Launch at Login toggle, artwork style picker, and future options such as Spotify API credentials (for release year and BPM-driven flame effect).
 
-## Known bugs
-
-- Long track titles or artist names that overflow their label do not scroll as intended and can occasionally cause the entire menu UI to disappear. To be fixed.
-
 ## Notes
 
 - Ad-hoc signed for personal use. macOS Gatekeeper will prompt you to approve

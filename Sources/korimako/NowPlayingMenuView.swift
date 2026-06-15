@@ -3,22 +3,23 @@ import AppKit
 final class NowPlayingMenuView: NSView {
 
     // MARK: – Callbacks
-    var onPrevious:  (() -> Void)?
-    var onPlayPause: (() -> Void)?
-    var onNext:      (() -> Void)?
-    var onArtTap: (() -> Void)?   // tapping current art → play/pause
+    var onPrevious: (() -> Void)?
+    var onNext:     (() -> Void)?
+    var onArtTap:   (() -> Void)?
 
     // MARK: – Geometry
     static let preferredWidth:        CGFloat = 280
-    static let heightWithoutPrevious: CGFloat = 393
-    static let heightWithPrevious:    CGFloat = 542
+    static let heightWithoutPrevious: CGFloat = 345
+    static let heightWithPrevious:    CGFloat = 482
 
     // MARK: – Main section subviews
-    private let artView         = FlickerImageView()
+    private let artView           = FlickerImageView()
+    private let pauseRevealOverlay = PassthroughView()  // thermal art through pause-symbol mask
+    private let artOverlayView    = PassthroughView()  // border overlay above artView
+    private let textAreaOverlay   = TapView()          // click catcher for text area
     private let artistMarquee   = MarqueeLabel()
     private let titleMarquee    = MarqueeLabel()
     private let prevButton      = NSButton()
-    private let playPauseButton = NSButton()
     private let nextButton      = NSButton()
     private let timeLabel       = NSTextField(labelWithString: "–:–– / –:––")
 
@@ -26,11 +27,14 @@ final class NowPlayingMenuView: NSView {
     private let separatorLine      = NSBox()
     private let prevHeaderLabel    = NSTextField(labelWithString: "Previous Track")
     private let prevArtView        = NSImageView()
-    private let prevArtistMarquee  = MarqueeLabel()
-    private let prevTitleMarquee   = MarqueeLabel()
+    private let prevArtistLabel    = NSTextField(labelWithString: "")
+    private let prevTitleLabel     = NSTextField(labelWithString: "")
 
-    // MARK: – Tap debounce
-    private var lastArtTap: Date = .distantPast
+    // MARK: – State
+    private var lastArtTap:    Date = .distantPast
+    private var isPlaying    = false
+    private var isHovering   = false
+    private var revealMask:    CAShapeLayer?
 
     // MARK: – Init
 
@@ -50,14 +54,40 @@ final class NowPlayingMenuView: NSView {
         configureImageView(artView,     cornerRadius: 8)
         configureImageView(prevArtView, cornerRadius: 5)
 
-        configureButton(prevButton,      symbol: "backward.fill", pointSize: 17)
-        configureButton(playPauseButton, symbol: "play.fill",     pointSize: 17)
-        configureButton(nextButton,      symbol: "forward.fill",  pointSize: 17)
-        prevButton.target      = self; prevButton.action      = #selector(didTapPrev)
-        playPauseButton.target = self; playPauseButton.action = #selector(didTapPlayPause)
-        nextButton.target      = self; nextButton.action      = #selector(didTapNext)
+        // Thermal pause-symbol reveal: shown on hover while playing.
+        pauseRevealOverlay.wantsLayer           = true
+        pauseRevealOverlay.layer?.cornerRadius  = 8
+        pauseRevealOverlay.layer?.masksToBounds = true
+        pauseRevealOverlay.isHidden             = true
+        let maskLayer = CAShapeLayer()
+        revealMask = maskLayer
+        pauseRevealOverlay.layer?.mask = maskLayer
 
-        artView.onTap = { [weak self] in self?.didTapArt() }
+        artView.onHoverChanged = { [weak self] hovering in
+            self?.isHovering = hovering
+            self?.updatePauseOverlay()
+        }
+        textAreaOverlay.onHoverChanged = { [weak self] hovering in
+            self?.isHovering = hovering
+            self?.updatePauseOverlay()
+        }
+
+        // Hairline border overlay: must live in its own view above artView because
+        // NSImageView renders its image via a private sublayer that sits on top of
+        // anything added to artView.layer directly.
+        artOverlayView.wantsLayer            = true
+        artOverlayView.layer?.cornerRadius   = 8
+        artOverlayView.layer?.masksToBounds  = true
+        artOverlayView.layer?.borderWidth    = 1
+        artOverlayView.layer?.borderColor    = NSColor(white: 1, alpha: 0.15).cgColor
+
+        configureButton(prevButton, symbol: "backward.fill", pointSize: 15)
+        configureButton(nextButton, symbol: "forward.fill",  pointSize: 15)
+        prevButton.target = self; prevButton.action = #selector(didTapPrev)
+        nextButton.target = self; nextButton.action = #selector(didTapNext)
+
+        artView.onTap           = { [weak self] in self?.didTapArt() }
+        textAreaOverlay.onTap   = { [weak self] in self?.onArtTap?() }
 
         artistMarquee.configure(
             font:  .boldSystemFont(ofSize: NSFont.systemFontSize),
@@ -73,25 +103,31 @@ final class NowPlayingMenuView: NSView {
 
         separatorLine.boxType = .separator
 
-        prevHeaderLabel.font                 = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        let baseFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        prevHeaderLabel.stringValue          = "(previously)"
+        prevHeaderLabel.font                 = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
         prevHeaderLabel.textColor            = .tertiaryLabelColor
         prevHeaderLabel.alignment            = .center
         prevHeaderLabel.maximumNumberOfLines = 1
 
-        prevArtistMarquee.configure(
-            font:  .systemFont(ofSize: NSFont.systemFontSize - 1),
-            color: .secondaryLabelColor)
-        prevTitleMarquee.configure(
-            font:  .systemFont(ofSize: NSFont.smallSystemFontSize),
-            color: .tertiaryLabelColor)
+        prevArtistLabel.font                 = .systemFont(ofSize: NSFont.systemFontSize - 1)
+        prevArtistLabel.textColor            = .secondaryLabelColor
+        prevArtistLabel.alignment            = .center
+        prevArtistLabel.lineBreakMode        = .byTruncatingTail
+        prevArtistLabel.maximumNumberOfLines = 1
 
-        for v in [artView, artistMarquee, titleMarquee,
-                  prevButton, playPauseButton, nextButton,
-                  timeLabel] as [NSView] {
+        prevTitleLabel.font                  = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        prevTitleLabel.textColor             = .tertiaryLabelColor
+        prevTitleLabel.alignment             = .center
+        prevTitleLabel.lineBreakMode         = .byTruncatingTail
+        prevTitleLabel.maximumNumberOfLines  = 1
+
+        for v in [artView, pauseRevealOverlay, artOverlayView, artistMarquee, titleMarquee,
+                  timeLabel, textAreaOverlay, prevButton, nextButton] as [NSView] {
             addSubview(v)
         }
         for v in [separatorLine, prevHeaderLabel, prevArtView,
-                  prevArtistMarquee, prevTitleMarquee] as [NSView] {
+                  prevArtistLabel, prevTitleLabel] as [NSView] {
             v.isHidden = true
             addSubview(v)
         }
@@ -128,33 +164,49 @@ final class NowPlayingMenuView: NSView {
 
         // artSz = 256 → (280−256)/2 = 12px margin, matching prevArtView's x=12
         let artSz: CGFloat = 256
-        artView.frame = NSRect(x: (w - artSz) / 2, y: 12, width: artSz, height: artSz)
+        let artFrame = NSRect(x: (w - artSz) / 2, y: 8, width: artSz, height: artSz)
+        artView.frame              = artFrame
+        pauseRevealOverlay.frame   = artFrame
+        artOverlayView.frame       = artFrame
 
-        artistMarquee.frame = NSRect(x: 16, y: 278, width: w - 32, height: 18)
-        titleMarquee.frame  = NSRect(x: 16, y: 300, width: w - 32, height: 15)
+        // Prev/next buttons flank the text block, flush with art edges (x=12 / x=268)
+        let artX:  CGFloat = (w - 256) / 2   // = 12 at w=280
+        let btnW:  CGFloat = 22
+        let nudge: CGFloat = 4
+        let textX          = artX + btnW + nudge
+        let textW          = 256 - 2 * (btnW + nudge)
 
-        let btnSz: CGFloat = 36
-        let gap: CGFloat   = (w - btnSz * 3) / 4
-        prevButton.frame      = NSRect(x: gap,                 y: 323, width: btnSz, height: btnSz)
-        playPauseButton.frame = NSRect(x: gap * 2 + btnSz,     y: 323, width: btnSz, height: btnSz)
-        nextButton.frame      = NSRect(x: gap * 3 + btnSz * 2, y: 323, width: btnSz, height: btnSz)
+        // Text block: artist (18) + gap (4) + title (15) + gap (4) + time (16) = 57
+        prevButton.frame = NSRect(x: artX,              y: 274, width: btnW, height: 57)
+        nextButton.frame = NSRect(x: artX + 256 - btnW, y: 274, width: btnW, height: 57)
 
-        timeLabel.frame = NSRect(x: 16, y: 367, width: w - 32, height: 16)
+        artistMarquee.frame = NSRect(x: textX, y: 274, width: textW, height: 18)
+        titleMarquee.frame  = NSRect(x: textX, y: 296, width: textW, height: 15)
+        timeLabel.frame     = NSRect(x: textX, y: 315, width: textW, height: 16)
+
+        // Transparent overlay for text area clicks (plays/pauses)
+        textAreaOverlay.frame = NSRect(x: textX, y: 274, width: textW, height: 57)
 
         // Previous section
-        separatorLine.frame   = NSRect(x: 0,  y: 393, width: w,      height: 1)
-        prevHeaderLabel.frame = NSRect(x: 16, y: 401, width: w - 32, height: 14)
+        separatorLine.frame = NSRect(x: 0, y: 345, width: w, height: 1)
 
         let prevArtSz: CGFloat = 112
-        let prevArtY:  CGFloat = 420
+        let prevArtY:  CGFloat = 364
         prevArtView.frame = NSRect(x: 12, y: prevArtY, width: prevArtSz, height: prevArtSz)
 
         let prevTextX: CGFloat = 132   // 12 + 112 + 8
         let prevTextW          = w - prevTextX - 12
-        let prevPairH: CGFloat = 17 + 4 + 15
-        let prevPairY          = prevArtY + (prevArtSz - prevPairH) / 2
-        prevArtistMarquee.frame = NSRect(x: prevTextX, y: prevPairY,      width: prevTextW, height: 17)
-        prevTitleMarquee.frame  = NSRect(x: prevTextX, y: prevPairY + 21, width: prevTextW, height: 15)
+
+        // Text block: "Just played:" + gap + artist + title, vertically centred in art
+        let justPlayedH: CGFloat = 13
+        let labelGap:    CGFloat = justPlayedH               // one full line gap
+        let artistH:     CGFloat = 17
+        let titleH:      CGFloat = 14
+        let blockH = artistH + 3 + titleH + labelGap + justPlayedH
+        let blockY = prevArtY + floor((prevArtSz - blockH) / 2)
+        prevArtistLabel.frame  = NSRect(x: prevTextX, y: blockY,                                        width: prevTextW, height: artistH)
+        prevTitleLabel.frame   = NSRect(x: prevTextX, y: blockY + artistH + 3,                          width: prevTextW, height: titleH)
+        prevHeaderLabel.frame  = NSRect(x: prevTextX, y: blockY + artistH + 3 + titleH + labelGap,      width: prevTextW, height: justPlayedH)
     }
 
     // MARK: – Update
@@ -169,10 +221,11 @@ final class NowPlayingMenuView: NSView {
         artView.baseImage    = artwork
         artView.flickerImage = flickerArtwork
 
-        let ppSymbol = isPlaying ? "pause.fill" : "play.fill"
-        let cfg = NSImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-        playPauseButton.image = NSImage(systemSymbolName: ppSymbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(cfg)
+        self.isPlaying = isPlaying
+        pauseRevealOverlay.layer?.contents = flickerArtwork.flatMap {
+            $0.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        }
+        updatePauseOverlay()
 
         timeLabel.stringValue = "\(formatTime(elapsed)) / \(formatTime(duration > 0 ? duration : 0))"
 
@@ -183,12 +236,12 @@ final class NowPlayingMenuView: NSView {
             needsLayout = true
         }
         for v in [separatorLine, prevHeaderLabel, prevArtView,
-                  prevArtistMarquee, prevTitleMarquee] as [NSView] {
+                  prevArtistLabel, prevTitleLabel] as [NSView] {
             v.isHidden = !hasPrev
         }
         if hasPrev {
-            prevArtistMarquee.stringValue = artistString(prevArtist ?? "", year: prevYear)
-            prevTitleMarquee.stringValue  = prevTitle!
+            prevArtistLabel.stringValue = artistString(prevArtist ?? "", year: prevYear)
+            prevTitleLabel.stringValue  = prevTitle!
             prevArtView.image = prevArtwork
         }
     }
@@ -203,10 +256,54 @@ final class NowPlayingMenuView: NSView {
         return String(format: "%d:%02d", t / 60, t % 60)
     }
 
+    // MARK: – Pause reveal overlay
+
+    private func updatePauseOverlay() {
+        guard isHovering, let mask = revealMask else {
+            pauseRevealOverlay.isHidden = true
+            return
+        }
+        let artRect = CGRect(origin: .zero, size: CGSize(width: 256, height: 256))
+        mask.path = isPlaying ? pauseBarPath(in: artRect) : playTrianglePath(in: artRect)
+        pauseRevealOverlay.isHidden = false
+    }
+
+    private func pauseBarPath(in rect: CGRect) -> CGPath {
+        let path    = CGMutablePath()
+        let symbolH = rect.height * 0.5
+        let barW    = symbolH * 0.22
+        let gap     = barW * 0.8
+        let totalW  = barW * 2 + gap
+        let ox      = (rect.width  - totalW) / 2
+        let oy      = (rect.height - symbolH) / 2
+        let r       = barW * 0.3
+        path.addRoundedRect(in: CGRect(x: ox,              y: oy, width: barW, height: symbolH), cornerWidth: r, cornerHeight: r)
+        path.addRoundedRect(in: CGRect(x: ox + barW + gap, y: oy, width: barW, height: symbolH), cornerWidth: r, cornerHeight: r)
+        return path
+    }
+
+    private func playTrianglePath(in rect: CGRect) -> CGPath {
+        let path    = CGMutablePath()
+        let symbolH = rect.height * 0.5
+        let symbolW = symbolH * 0.85
+        let ox      = rect.width  / 2 - symbolW / 3   // centroid-aligned, not bbox-centered
+        let oy      = (rect.height - symbolH) / 2
+        let r: CGFloat = 10
+        // Rounded right-pointing triangle: top-left → right-tip → bottom-left
+        path.move(to: CGPoint(x: ox, y: oy + r))
+        path.addArc(tangent1End: CGPoint(x: ox,           y: oy),
+                    tangent2End: CGPoint(x: ox + symbolW, y: oy + symbolH / 2), radius: r)
+        path.addArc(tangent1End: CGPoint(x: ox + symbolW, y: oy + symbolH / 2),
+                    tangent2End: CGPoint(x: ox,            y: oy + symbolH),    radius: r)
+        path.addArc(tangent1End: CGPoint(x: ox,           y: oy + symbolH),
+                    tangent2End: CGPoint(x: ox,            y: oy),              radius: r)
+        path.closeSubpath()
+        return path
+    }
+
     // MARK: – Actions
-    @objc private func didTapPrev()      { onPrevious?() }
-    @objc private func didTapNext()      { onNext?() }
-    @objc private func didTapPlayPause() { onPlayPause?() }
+    @objc private func didTapPrev() { onPrevious?() }
+    @objc private func didTapNext() { onNext?() }
 
     @objc private func didTapArt() {
         guard Date().timeIntervalSince(lastArtTap) >= 1.0 else { return }
@@ -214,5 +311,50 @@ final class NowPlayingMenuView: NSView {
         onArtTap?()
     }
 
+}
 
+// Transparent to hit-testing so mouse events fall through to siblings below.
+private final class PassthroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+// Simple press-to-tap view using NSPressGestureRecognizer (works inside NSMenu's event loop).
+private final class TapView: NSView {
+    var onTap: (() -> Void)?
+    var onHoverChanged: ((Bool) -> Void)?
+    private var pressDownPoint = NSPoint.zero
+    private var trackingArea: NSTrackingArea?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        let press = NSPressGestureRecognizer(target: self, action: #selector(handlePress(_:)))
+        press.minimumPressDuration = 0
+        addGestureRecognizer(press)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = trackingArea { removeTrackingArea(ta) }
+        let ta = NSTrackingArea(rect: bounds,
+                                options: [.mouseEnteredAndExited, .activeAlways],
+                                owner: self, userInfo: nil)
+        trackingArea = ta
+        addTrackingArea(ta)
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHoverChanged?(true) }
+    override func mouseExited(with event: NSEvent)  { onHoverChanged?(false) }
+
+    @objc private func handlePress(_ gr: NSPressGestureRecognizer) {
+        switch gr.state {
+        case .began:
+            pressDownPoint = gr.location(in: self)
+        case .ended:
+            let d = gr.location(in: self)
+            let dx = d.x - pressDownPoint.x, dy = d.y - pressDownPoint.y
+            if (dx*dx + dy*dy).squareRoot() <= 4 { onTap?() }
+        default: break
+        }
+    }
 }

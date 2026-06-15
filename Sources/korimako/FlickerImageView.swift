@@ -10,6 +10,9 @@ final class FlickerImageView: NSImageView {
     /// Called on mouse-up (regardless of flickerMode). Use instead of a separate NSClickGestureRecognizer.
     var onTap: (() -> Void)?
 
+    /// Called whenever the mouse enters or exits this view's bounds.
+    var onHoverChanged: ((Bool) -> Void)?
+
     var flickerMode: FlickerMode = .none {
         didSet {
             guard flickerMode != oldValue else { return }
@@ -27,8 +30,9 @@ final class FlickerImageView: NSImageView {
         didSet { if flickerImage == nil { stopFlicker() } }
     }
 
-    private var showingFlicker = false
-    private var flickerTimer:   Timer?
+    private var showingFlicker   = false
+    private var flickerTimer:    Timer?
+    private var pressDownPoint   = NSPoint.zero
     private var ticks    = 0
     private var switchAt = 0
     private var trackingArea: NSTrackingArea?
@@ -55,6 +59,7 @@ final class FlickerImageView: NSImageView {
     @objc private func handlePress(_ gr: NSPressGestureRecognizer) {
         switch gr.state {
         case .began:
+            pressDownPoint = gr.location(in: self)
             if flickerMode == .onClick, flickerImage != nil {
                 showingFlicker = true
                 image = flickerImage
@@ -64,7 +69,9 @@ final class FlickerImageView: NSImageView {
                 showingFlicker = false
                 image = baseImage
             }
-            onTap?()
+            let d = gr.location(in: self)
+            let dx = d.x - pressDownPoint.x, dy = d.y - pressDownPoint.y
+            if (dx*dx + dy*dy).squareRoot() <= 4 { onTap?() }
         case .cancelled, .failed:
             if flickerMode == .onClick {
                 showingFlicker = false
@@ -88,9 +95,11 @@ final class FlickerImageView: NSImageView {
 
     override func mouseEntered(with event: NSEvent) {
         if flickerMode == .flame { startFlicker() }
+        onHoverChanged?(true)
     }
     override func mouseExited(with event: NSEvent) {
         if flickerMode == .flame { stopFlicker() }
+        onHoverChanged?(false)
     }
 
     // MARK: – Flame flicker

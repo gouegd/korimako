@@ -65,17 +65,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func handleStatus(_ status: NcspotStatus) {
         lastKnownMode = status.mode
         nowPlaying.update(status: status)
-        let trackChanged = updateHistory(status)
+        updateHistory(status)
         render(status)
         switch status.mode {
         case .playing:
             startPlaybackTimer()
-            if trackChanged { refreshMenuIfOpen() }
-            else if menuIsOpen { updateNowPlayingView() }
+            if menuIsOpen { updateNowPlayingView() }
         case .paused, .stopped:
             stopPlaybackTimer()
-            if trackChanged { refreshMenuIfOpen() }
-            else { updateNowPlayingView() }   // immediate label freeze on pause
+            updateNowPlayingView()   // immediate label freeze on pause
         }
     }
 
@@ -160,10 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if connected {
             if nowPlayingView == nil {
                 let view = NowPlayingMenuView()
-                view.onPrevious   = { [weak self] in self?.ipc.send("previous") }
-                view.onNext       = { [weak self] in self?.ipc.send("next") }
-                view.onPlayPause  = { [weak self] in self?.ipc.send("playpause") }
-                view.onArtTap = { [weak self] in self?.ipc.send("playpause") }
+                view.onPrevious = { [weak self] in self?.ipc.send("previous") }
+                view.onNext     = { [weak self] in self?.ipc.send("next") }
+                view.onArtTap   = { [weak self] in self?.ipc.send("playpause") }
                 nowPlayingView = view
             }
             updateNowPlayingView()          // sets correct height before item is added
@@ -216,13 +213,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
             return ArtworkTransform.apply(orig, style: ArtworkTransform.current)
         }
-        let needsFlicker = ArtworkTransform.current == .flame || ArtworkTransform.current == .thermalClick
-        let flickerArtwork: NSImage? = needsFlicker
-            ? current?.coverURL.flatMap { url in
-                guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
-                return ArtworkTransform.apply(orig, style: .thermal)
-              }
-            : nil
+        let flickerArtwork: NSImage? = current?.coverURL.flatMap { url in
+            guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
+            return ArtworkTransform.apply(orig, style: .thermal)
+        }
         let flickerMode: FlickerImageView.FlickerMode = {
             switch ArtworkTransform.current {
             case .flame:        return .flame

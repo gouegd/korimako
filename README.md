@@ -124,6 +124,10 @@ eligibility call. Off by default: it blocks now-playing handoff on macOS 15.4+.
 
 </details>
 
+## Known issues
+
+- **Extra right margin in menu widget** — the widget has a small asymmetric margin on the right side.
+
 ## TODO
 
 - Add a minimal Preferences window to surface: Launch at Login toggle, artwork style picker, and future options such as Spotify API credentials (for release year and BPM-driven flame effect).

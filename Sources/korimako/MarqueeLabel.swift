@@ -24,17 +24,19 @@ final class MarqueeLabel: NSView {
     }
 
     func configure(font: NSFont, color: NSColor) {
-        self.font = font
+        self.font       = font
+        self.labelColor = color
         textLayer.font     = CTFontCreateWithName(font.fontName as CFString, font.pointSize, nil)
         textLayer.fontSize = font.pointSize
-        textLayer.foregroundColor = color.cgColor
+        applyColor()
         resetScroll()
     }
 
     // MARK: – Private
 
-    private var text = ""
-    private var font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
+    private var text       = ""
+    private var font:       NSFont  = .systemFont(ofSize: NSFont.systemFontSize)
+    private var labelColor: NSColor = .labelColor
     private let textLayer = CATextLayer()
     private var lastLayoutWidth: CGFloat = 0
 
@@ -54,6 +56,19 @@ final class MarqueeLabel: NSView {
         layer?.addSublayer(textLayer)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: – Appearance
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColor()
+    }
+
+    private func applyColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            self.textLayer.foregroundColor = self.labelColor.cgColor
+        }
+    }
 
     // MARK: – Layout
 

@@ -79,7 +79,7 @@ final class NowPlayingMenuView: NSView {
         artOverlayView.layer?.cornerRadius   = 8
         artOverlayView.layer?.masksToBounds  = true
         artOverlayView.layer?.borderWidth    = 1
-        artOverlayView.layer?.borderColor    = NSColor(white: 1, alpha: 0.15).cgColor
+        updateBorderColor()
 
         configureButton(prevButton, symbol: "backward.fill", pointSize: 15)
         configureButton(nextButton, symbol: "forward.fill",  pointSize: 15)
@@ -254,6 +254,19 @@ final class NowPlayingMenuView: NSView {
     private func formatTime(_ s: TimeInterval) -> String {
         let t = max(0, Int(s))
         return String(format: "%d:%02d", t / 60, t % 60)
+    }
+
+    // MARK: – Appearance
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBorderColor()
+    }
+
+    private func updateBorderColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            self.artOverlayView.layer?.borderColor = NSColor(white: 1, alpha: 0.15).cgColor
+        }
     }
 
     // MARK: – Pause reveal overlay

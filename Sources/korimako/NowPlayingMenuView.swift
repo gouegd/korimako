@@ -13,10 +13,9 @@ final class NowPlayingMenuView: NSView {
     static let heightWithPrevious:    CGFloat = 482
 
     // MARK: – Main section subviews
-    private let artView           = FlickerImageView()
+    private let artView            = FlickerImageView()
     private let pauseRevealOverlay = PassthroughView()  // thermal art through pause-symbol mask
-    private let artOverlayView    = PassthroughView()  // border overlay above artView
-    private let textAreaOverlay   = TapView()          // click catcher for text area
+    private let textAreaOverlay    = TapView()          // click catcher for text area
     private let artistMarquee   = MarqueeLabel()
     private let titleMarquee    = MarqueeLabel()
     private let prevButton      = NSButton()
@@ -72,15 +71,6 @@ final class NowPlayingMenuView: NSView {
             self?.updatePauseOverlay()
         }
 
-        // Hairline border overlay: must live in its own view above artView because
-        // NSImageView renders its image via a private sublayer that sits on top of
-        // anything added to artView.layer directly.
-        artOverlayView.wantsLayer            = true
-        artOverlayView.layer?.cornerRadius   = 8
-        artOverlayView.layer?.masksToBounds  = true
-        artOverlayView.layer?.borderWidth    = 1
-        updateBorderColor()
-
         configureButton(prevButton, symbol: "backward.fill", pointSize: 15)
         configureButton(nextButton, symbol: "forward.fill",  pointSize: 15)
         prevButton.target = self; prevButton.action = #selector(didTapPrev)
@@ -122,7 +112,7 @@ final class NowPlayingMenuView: NSView {
         prevTitleLabel.lineBreakMode         = .byTruncatingTail
         prevTitleLabel.maximumNumberOfLines  = 1
 
-        for v in [artView, pauseRevealOverlay, artOverlayView, artistMarquee, titleMarquee,
+        for v in [artView, pauseRevealOverlay, artistMarquee, titleMarquee,
                   timeLabel, textAreaOverlay, prevButton, nextButton] as [NSView] {
             addSubview(v)
         }
@@ -136,10 +126,11 @@ final class NowPlayingMenuView: NSView {
     }
 
     private func configureImageView(_ iv: NSImageView, cornerRadius: CGFloat) {
-        iv.imageScaling          = .scaleAxesIndependently
-        iv.wantsLayer            = true
-        iv.layer?.cornerRadius   = cornerRadius
-        iv.layer?.masksToBounds  = true
+        iv.imageScaling         = .scaleAxesIndependently
+        iv.wantsLayer           = true
+        iv.layer?.cornerRadius  = cornerRadius
+        iv.layer?.masksToBounds = true
+        iv.layer?.borderWidth   = 0.5
     }
 
     private func configureButton(_ btn: NSButton, symbol: String, pointSize: CGFloat) {
@@ -165,9 +156,8 @@ final class NowPlayingMenuView: NSView {
         // artSz = 256 → (280−256)/2 = 12px margin, matching prevArtView's x=12
         let artSz: CGFloat = 256
         let artFrame = NSRect(x: (w - artSz) / 2, y: 8, width: artSz, height: artSz)
-        artView.frame              = artFrame
-        pauseRevealOverlay.frame   = artFrame
-        artOverlayView.frame       = artFrame
+        artView.frame            = artFrame
+        pauseRevealOverlay.frame = artFrame
 
         // Prev/next buttons flank the text block, flush with art edges (x=12 / x=268)
         let artX:  CGFloat = (w - 256) / 2   // = 12 at w=280
@@ -265,7 +255,9 @@ final class NowPlayingMenuView: NSView {
 
     private func updateBorderColor() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            self.artOverlayView.layer?.borderColor = NSColor(white: 1, alpha: 0.15).cgColor
+            let c = NSColor.separatorColor.cgColor
+            self.artView.layer?.borderColor     = c
+            self.prevArtView.layer?.borderColor = c
         }
     }
 

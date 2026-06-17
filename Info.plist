@@ -26,5 +26,7 @@
     <false/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.entertainment</string>
 </dict>
 </plist>

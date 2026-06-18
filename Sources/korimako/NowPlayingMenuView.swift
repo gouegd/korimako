@@ -18,8 +18,10 @@ final class NowPlayingMenuView: NSView {
     private let textAreaOverlay    = TapView()          // click catcher for text area
     private let artistMarquee   = MarqueeLabel()
     private let titleMarquee    = MarqueeLabel()
-    private let prevButton      = NSButton()
-    private let nextButton      = NSButton()
+    private let prevButton         = HoverButton()
+    private let nextButton         = HoverButton()
+    private let prevButtonOverlay  = PassthroughView()
+    private let nextButtonOverlay  = PassthroughView()
     private let timeLabel       = NSTextField(labelWithString: "–:–– / –:––")
 
     // MARK: – Previous track row subviews
@@ -30,10 +32,14 @@ final class NowPlayingMenuView: NSView {
     private let prevTitleLabel     = NSTextField(labelWithString: "")
 
     // MARK: – State
-    private var lastArtTap:    Date = .distantPast
-    private var isPlaying    = false
-    private var isHovering   = false
-    private var revealMask:    CAShapeLayer?
+    private enum HoverZone { case none, artOrText, prevBtn, nextBtn }
+    private var lastArtTap:       Date = .distantPast
+    private var isPlaying       = false
+    private var hoverZone: HoverZone = .none
+    private var revealMask:       CAShapeLayer?  // CGPath-based mask for pause/play shapes
+    private var btnRevealMask:    CALayer?        // image-based mask for back/FF icons on art
+    private var prevArtMaskImage: CGImage?
+    private var nextArtMaskImage: CGImage?
 
     // MARK: – Init
 
@@ -58,16 +64,30 @@ final class NowPlayingMenuView: NSView {
         pauseRevealOverlay.layer?.cornerRadius  = 8
         pauseRevealOverlay.layer?.masksToBounds = true
         pauseRevealOverlay.isHidden             = true
-        let maskLayer = CAShapeLayer()
-        revealMask = maskLayer
-        pauseRevealOverlay.layer?.mask = maskLayer
+        let shapeMask = CAShapeLayer()
+        revealMask = shapeMask
+        pauseRevealOverlay.layer?.mask = shapeMask
 
-        artView.onHoverChanged = { [weak self] hovering in
-            self?.isHovering = hovering
+        // Image-based mask for backward/forward icon reveal on the art.
+        let artSymCfg = NSImage.SymbolConfiguration(pointSize: 90, weight: .regular)
+        prevArtMaskImage = NSImage(systemSymbolName: "backward.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(artSymCfg)?
+            .cgImage(forProposedRect: nil, context: nil, hints: nil)
+        nextArtMaskImage = NSImage(systemSymbolName: "forward.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(artSymCfg)?
+            .cgImage(forProposedRect: nil, context: nil, hints: nil)
+        let artMaskLayer = CALayer()
+        artMaskLayer.frame         = CGRect(origin: .zero, size: CGSize(width: 256, height: 256))
+        artMaskLayer.contentsGravity = .center
+        artMaskLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+        btnRevealMask = artMaskLayer
+
+        artView.onHoverChanged = { [weak self] h in
+            self?.hoverZone = h ? .artOrText : .none
             self?.updatePauseOverlay()
         }
-        textAreaOverlay.onHoverChanged = { [weak self] hovering in
-            self?.isHovering = hovering
+        textAreaOverlay.onHoverChanged = { [weak self] h in
+            self?.hoverZone = h ? .artOrText : .none
             self?.updatePauseOverlay()
         }
 
@@ -75,6 +95,38 @@ final class NowPlayingMenuView: NSView {
         configureButton(nextButton, symbol: "forward.fill",  pointSize: 15)
         prevButton.target = self; prevButton.action = #selector(didTapPrev)
         nextButton.target = self; nextButton.action = #selector(didTapNext)
+
+        // Thermal reveal overlays for back/FF buttons — same technique as pauseRevealOverlay.
+        let btnSize = CGSize(width: 22, height: 57)
+        let scale   = NSScreen.main?.backingScaleFactor ?? 2
+        let symCfg  = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        for (overlay, sym) in [(prevButtonOverlay, "backward.fill"),
+                               (nextButtonOverlay, "forward.fill")] as [(PassthroughView, String)] {
+            overlay.wantsLayer                   = true
+            overlay.layer?.contentsGravity        = .resizeAspectFill
+            overlay.layer?.masksToBounds          = true
+            overlay.layer?.cornerRadius           = 3
+            overlay.isHidden                      = true
+            let maskLayer                         = CALayer()
+            maskLayer.frame                       = CGRect(origin: .zero, size: btnSize)
+            maskLayer.contentsGravity             = .center
+            maskLayer.contentsScale               = scale
+            if let img = NSImage(systemSymbolName: sym, accessibilityDescription: nil)?
+                    .withSymbolConfiguration(symCfg) {
+                maskLayer.contents = img.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            }
+            overlay.layer?.mask = maskLayer
+        }
+        prevButton.onHoverChanged = { [weak self] h in
+            self?.prevButtonOverlay.isHidden = !h
+            self?.hoverZone = h ? .prevBtn : .none
+            self?.updatePauseOverlay()
+        }
+        nextButton.onHoverChanged = { [weak self] h in
+            self?.nextButtonOverlay.isHidden = !h
+            self?.hoverZone = h ? .nextBtn : .none
+            self?.updatePauseOverlay()
+        }
 
         artView.onTap           = { [weak self] in self?.didTapArt() }
         textAreaOverlay.onTap   = { [weak self] in self?.onArtTap?() }
@@ -113,7 +165,8 @@ final class NowPlayingMenuView: NSView {
         prevTitleLabel.maximumNumberOfLines  = 1
 
         for v in [artView, pauseRevealOverlay, artistMarquee, titleMarquee,
-                  timeLabel, textAreaOverlay, prevButton, nextButton] as [NSView] {
+                  timeLabel, textAreaOverlay, prevButton, nextButton,
+                  prevButtonOverlay, nextButtonOverlay] as [NSView] {
             addSubview(v)
         }
         for v in [separatorLine, prevHeaderLabel, prevArtView,
@@ -169,6 +222,8 @@ final class NowPlayingMenuView: NSView {
         // Text block: artist (18) + gap (4) + title (15) + gap (4) + time (16) = 57
         prevButton.frame = NSRect(x: artX,              y: 274, width: btnW, height: 57)
         nextButton.frame = NSRect(x: artX + 256 - btnW, y: 274, width: btnW, height: 57)
+        prevButtonOverlay.frame = prevButton.frame
+        nextButtonOverlay.frame = nextButton.frame
 
         artistMarquee.frame = NSRect(x: textX, y: 274, width: textW, height: 18)
         titleMarquee.frame  = NSRect(x: textX, y: 296, width: textW, height: 15)
@@ -212,9 +267,10 @@ final class NowPlayingMenuView: NSView {
         artView.flickerImage = flickerArtwork
 
         self.isPlaying = isPlaying
-        pauseRevealOverlay.layer?.contents = flickerArtwork.flatMap {
-            $0.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        }
+        let cgImg = flickerArtwork.flatMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+        pauseRevealOverlay.layer?.contents  = cgImg
+        prevButtonOverlay.layer?.contents   = cgImg
+        nextButtonOverlay.layer?.contents   = cgImg
         updatePauseOverlay()
 
         timeLabel.stringValue = "\(formatTime(elapsed)) / \(formatTime(duration > 0 ? duration : 0))"
@@ -255,7 +311,7 @@ final class NowPlayingMenuView: NSView {
 
     private func updateBorderColor() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let c = NSColor.separatorColor.cgColor
+            let c = NSColor.labelColor.withAlphaComponent(0.25).cgColor
             self.artView.layer?.borderColor     = c
             self.prevArtView.layer?.borderColor = c
         }
@@ -264,13 +320,26 @@ final class NowPlayingMenuView: NSView {
     // MARK: – Pause reveal overlay
 
     private func updatePauseOverlay() {
-        guard isHovering, let mask = revealMask else {
-            pauseRevealOverlay.isHidden = true
-            return
-        }
         let artRect = CGRect(origin: .zero, size: CGSize(width: 256, height: 256))
-        mask.path = isPlaying ? pauseBarPath(in: artRect) : playTrianglePath(in: artRect)
-        pauseRevealOverlay.isHidden = false
+        switch hoverZone {
+        case .none:
+            pauseRevealOverlay.isHidden = true
+        case .artOrText:
+            guard let mask = revealMask else { pauseRevealOverlay.isHidden = true; return }
+            pauseRevealOverlay.layer?.mask = mask
+            mask.path = isPlaying ? pauseBarPath(in: artRect) : playTrianglePath(in: artRect)
+            pauseRevealOverlay.isHidden = false
+        case .prevBtn:
+            guard let mask = btnRevealMask else { pauseRevealOverlay.isHidden = true; return }
+            mask.contents = prevArtMaskImage
+            pauseRevealOverlay.layer?.mask = mask
+            pauseRevealOverlay.isHidden = false
+        case .nextBtn:
+            guard let mask = btnRevealMask else { pauseRevealOverlay.isHidden = true; return }
+            mask.contents = nextArtMaskImage
+            pauseRevealOverlay.layer?.mask = mask
+            pauseRevealOverlay.isHidden = false
+        }
     }
 
     private func pauseBarPath(in rect: CGRect) -> CGPath {
@@ -321,6 +390,25 @@ final class NowPlayingMenuView: NSView {
 // Transparent to hit-testing so mouse events fall through to siblings below.
 private final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+// NSButton with hover tracking — fires onHoverChanged without consuming clicks.
+private final class HoverButton: NSButton {
+    var onHoverChanged: ((Bool) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = trackingArea { removeTrackingArea(ta) }
+        let ta = NSTrackingArea(rect: bounds,
+                                options: [.mouseEnteredAndExited, .activeAlways],
+                                owner: self, userInfo: nil)
+        trackingArea = ta
+        addTrackingArea(ta)
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHoverChanged?(true) }
+    override func mouseExited(with event: NSEvent)  { onHoverChanged?(false) }
 }
 
 // Simple press-to-tap view using NSPressGestureRecognizer (works inside NSMenu's event loop).

@@ -302,6 +302,17 @@ final class NowPlayingMenuView: NSView {
         return String(format: "%d:%02d", t / 60, t % 60)
     }
 
+    // MARK: – Sizing
+
+    // NSMenu calls fittingSize to size its window. The default implementation walks the
+    // CALayer tree and reads raw sublayer frames, ignoring masksToBounds. When MarqueeLabel
+    // is scrolling, its textLayer.frame.width = naturalWidth+4 (up to 600px), which leaks
+    // into fittingSize and causes NSMenu to create a window much wider than 280px, producing
+    // the asymmetric right margin. Pinning fittingSize to the design width fixes this.
+    override var fittingSize: NSSize {
+        NSSize(width: Self.preferredWidth, height: frame.height)
+    }
+
     // MARK: – Appearance
 
     override func viewDidChangeEffectiveAppearance() {

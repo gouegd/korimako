@@ -57,6 +57,15 @@ final class MarqueeLabel: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    // MARK: – Sizing
+
+    // textLayer.frame.width = naturalWidth+4 when scrolling — much wider than bounds.
+    // masksToBounds clips the visual output but fittingSize walks raw CALayer frames and
+    // ignores it, so cap here to prevent the oversized sublayer leaking into a parent.
+    override var fittingSize: NSSize {
+        NSSize(width: bounds.width > 0 ? bounds.width : frame.width, height: frame.height)
+    }
+
     // MARK: – Appearance
 
     override func viewDidChangeEffectiveAppearance() {

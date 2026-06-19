@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Persisted across menu rebuilds; nil when not connected.
     private var nowPlayingView: NowPlayingMenuView?
+    /// Reveal artwork is expensive to compute (contrast check + possible hue-rotate);
+    /// cache it so the 1-second playback timer doesn't recompute on every tick.
+    /// Style is part of the key because changing style changes the displayed art.
+    private var cachedRevealArtwork: (url: String, style: ArtworkStyle, image: NSImage)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -217,6 +221,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
             return ArtworkTransform.apply(orig, style: .thermal)
         }
+        let revealArtwork: NSImage? = current?.coverURL.flatMap { url -> NSImage? in
+            let style = ArtworkTransform.current
+            if let hit = cachedRevealArtwork, hit.url == url, hit.style == style { return hit.image }
+            guard let orig = nowPlaying.cachedArtwork(for: url) else { return nil }
+            let img = ArtworkTransform.revealImage(for: orig, displayedAs: artwork ?? orig)
+            cachedRevealArtwork = (url, style, img)
+            return img
+        }
         let flickerMode: FlickerImageView.FlickerMode = {
             switch ArtworkTransform.current {
             case .flame:        return .flame
@@ -251,6 +263,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     artwork: artwork,
                     flickerArtwork: flickerArtwork,
                     flickerMode: flickerMode,
+                    revealArtwork: revealArtwork,
                     isPlaying: isPlaying,
                     elapsed: elapsed,
                     duration: duration,

@@ -258,6 +258,7 @@ final class NowPlayingMenuView: NSView {
 
     func update(title: String, artist: String, year: Int?, artwork: NSImage?,
                 flickerArtwork: NSImage?, flickerMode: FlickerImageView.FlickerMode,
+                revealArtwork: NSImage?,
                 isPlaying: Bool, elapsed: TimeInterval, duration: TimeInterval,
                 prevTitle: String?, prevArtist: String?, prevYear: Int?, prevArtwork: NSImage?) {
         artistMarquee.stringValue = artistString(artist, year: year)
@@ -267,7 +268,7 @@ final class NowPlayingMenuView: NSView {
         artView.flickerImage = flickerArtwork
 
         self.isPlaying = isPlaying
-        let cgImg = flickerArtwork.flatMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+        let cgImg = revealArtwork.flatMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
         pauseRevealOverlay.layer?.contents  = cgImg
         prevButtonOverlay.layer?.contents   = cgImg
         nextButtonOverlay.layer?.contents   = cgImg

@@ -372,7 +372,7 @@ final class NowPlayingMenuView: NSView {
         let path    = CGMutablePath()
         let symbolH = rect.height * 0.5
         let symbolW = symbolH * 0.85
-        let ox      = rect.width  / 2 - symbolW / 3   // centroid-aligned, not bbox-centered
+        let ox      = rect.width / 2 - symbolW * 5 / 12  // optical centre: between bbox (/2) and centroid (/3)
         let oy      = (rect.height - symbolH) / 2
         let r: CGFloat = 10
         // Rounded right-pointing triangle: top-left → right-tip → bottom-left

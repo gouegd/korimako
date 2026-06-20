@@ -20,7 +20,7 @@ The menu widget no longer shows an asymmetric right margin when a long track tit
 The play symbol shown on art hover is now optically centred in the album art.
 
 ### Smarter hover reveal
-The hover reveal effect now adapts to the album art. For clean, simple artwork the thermal effect is used as before. For busy or complex artwork — collages, dense illustrations — a dark overlay is used instead, making the symbol shapes clearly readable regardless of what's going on in the background.
+The hover reveal effect now adapts to the album art. For most covers the thermal effect is used as before. For warm light-green artwork — where thermal maps to a visually similar yellow-green family and the mask shape becomes hard to read — a dark overlay is used instead, keeping the symbol clearly visible regardless of the background.
 
 ### Entertainment category
 korimako is now registered with macOS as an Entertainment app (`LSApplicationCategoryType`), which affects how it appears in Spotlight, Finder's Get Info, and App Store categorization.
